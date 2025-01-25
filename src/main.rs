@@ -1,10 +1,16 @@
 mod dag;
 mod crdt;
+mod process;
 
 use std::vec;
 
 use crdt::CRDT;
 use dag::Dag;
+use process::Process;
+
+use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc;
+use std::thread;
 
 fn main() {
 
@@ -109,4 +115,30 @@ fn main() {
     
     let seq = add_remove_reconciliation(&concurrent_set_dag).collect::<Vec<usize>>();
     println!("Concurrent Set {:?}", seq);
+
+    let n = 4;
+    let (processes_to_network_sender, processes_to_network_receiver): (Sender<usize>, Receiver<usize>) = mpsc::channel();
+    let mut network_to_processes_senders = vec![];
+    let mut threads = vec![];
+    for i in 0..n {
+        let (network_to_process_sender, network_to_process_receiver): (Sender<usize>, Receiver<usize>) = mpsc::channel();
+        network_to_processes_senders.push(network_to_process_sender);
+        let mut process = Process::new(i, &counter, network_to_process_receiver, &processes_to_network_sender);
+        let t = thread::spawn(move || {
+            process.run();
+        });
+
+        threads.push(t);
+    }
+
+    // networking
+    for msg in processes_to_network_receiver {  // TODO: add some asynchrony by hand?
+        for sender in network_to_processes_senders.iter() {
+            sender.send(msg).expect("oops! the network sender panicked");
+        }
+    }
+
+    for t in threads {
+        t.join().expect("oops! the child thread panicked");
+    }
 }

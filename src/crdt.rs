@@ -1,18 +1,19 @@
 use crate::dag::Dag;
 
+#[derive(Clone)]
 pub struct CRDT<S: Clone, I: Iterator<Item = usize>> {
     operations: Vec<fn(S) -> S>,
-    reconciliation: Box<dyn Fn(&Dag<usize>) -> I>,
+    reconciliation: fn(&Dag<usize>) -> I,
     pub dag: Dag<usize>,
     initial_state: S,
 }
 
 impl <'a, S: Clone, I: Iterator<Item = usize>> CRDT<S, I> {
-    pub fn new(init: S, ops: Vec<fn(S) -> S>, rec: impl Fn(&Dag<usize>) -> I + 'static) -> CRDT<S, I> {
+    pub fn new(init: S, ops: Vec<fn(S) -> S>, rec: fn(&Dag<usize>) -> I) -> CRDT<S, I> {
         CRDT { 
             operations: ops, 
             dag: Dag::new(0),
-            reconciliation: Box::new(rec),
+            reconciliation: rec,
             initial_state: init,
         }
     }

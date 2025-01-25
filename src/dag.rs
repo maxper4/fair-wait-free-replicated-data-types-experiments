@@ -28,7 +28,7 @@ impl <T>Vertex<T> {
 //     }
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Dag<T> {
     vertices: Vec<Vertex<T>>,
     edges: HashMap<u32, Vec<u32>>, // from -> to
