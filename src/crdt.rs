@@ -1,26 +1,38 @@
 use crate::dag::Dag;
 
 #[derive(Clone)]
-pub struct CRDT<S: Clone, I: Iterator<Item = usize>> {
+pub struct Operation {
+    pub id: usize,
+    //TODO: add arguments
+}
+
+impl Operation {
+    pub fn new(id: usize) -> Operation {
+        Operation { id }
+    }
+}
+
+#[derive(Clone)]
+pub struct CRDT<S: Clone, I: Iterator<Item = Operation>> {
     operations: Vec<fn(S) -> S>,
-    reconciliation: fn(&Dag<usize>) -> I,
-    pub dag: Dag<usize>,
+    reconciliation: fn(&Dag<Operation>) -> I,
+    pub dag: Dag<Operation>,
     initial_state: S,
 }
 
-impl <'a, S: Clone, I: Iterator<Item = usize>> CRDT<S, I> {
-    pub fn new(init: S, ops: Vec<fn(S) -> S>, rec: fn(&Dag<usize>) -> I) -> CRDT<S, I> {
+impl <'a, S: Clone, I: Iterator<Item = Operation>> CRDT<S, I> {
+    pub fn new(init: S, ops: Vec<fn(S) -> S>, rec: fn(&Dag<Operation>) -> I) -> CRDT<S, I> {
         CRDT { 
             operations: ops, 
-            dag: Dag::new(0),
+            dag: Dag::new(Operation::new(0)),
             reconciliation: rec,
             initial_state: init,
         }
     }
 
-    pub fn apply(&mut self, op: usize) {
+    pub fn apply(&mut self, op: Operation) {
         let heads = self.dag.get_heads();
-        self.dag.add_vertex(heads, op); // TODO: apply arguments
+        self.dag.add_vertex(heads, op);
     }
 
     pub fn read(&self) -> S {
@@ -28,7 +40,7 @@ impl <'a, S: Clone, I: Iterator<Item = usize>> CRDT<S, I> {
         let mut seq = (self.reconciliation)(&self.dag);
         seq.next(); // skip the root
         for op in seq {     
-            state = (self.operations[op])(state);
+            state = (self.operations[op.id])(state);
         }
 
         state
