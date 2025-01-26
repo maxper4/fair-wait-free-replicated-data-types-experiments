@@ -62,7 +62,7 @@ fn main() {
                         children.retain(|x| x.id != v.id);
                     }
 
-                    if !conflicted {
+                    if !conflicted {    // if no conflict with the whole set of concurrent operations, add in the order
                         toexplore.push(v1);
                     }
                     
