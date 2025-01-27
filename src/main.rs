@@ -65,7 +65,9 @@ fn main() {
                     if !conflicted {    // if no conflict with the whole set of concurrent operations, add in the order
                         toexplore.push(v1);
                     }
-                    
+                }
+                if children.len() == 1 {
+                    toexplore.push(children.pop.unwrap());
                 }
             } else {
                 toexplore.extend(children.into_iter());
