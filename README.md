@@ -7,4 +7,5 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 ## TODO
 - (real) networking
 - run multi processes experiments in docker
+- process-fair revocation
 - visualization of DAGs
