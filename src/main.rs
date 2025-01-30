@@ -67,7 +67,7 @@ fn main() {
                     }
                 }
                 if children.len() == 1 {
-                    toexplore.push(children.pop.unwrap());
+                    toexplore.push(children.pop().unwrap());
                 }
             } else {
                 toexplore.extend(children.into_iter());
