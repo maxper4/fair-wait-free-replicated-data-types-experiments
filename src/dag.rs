@@ -10,10 +10,6 @@ impl <T>Vertex<T> {
     pub fn new(id: u32, l: T) -> Vertex<T> {
         Vertex { id, label: l }
     }
-
-    pub fn label(&self) -> &T {
-        &self.label
-    }
 }
 
 // #[derive(Debug, Clone, Copy)]
