@@ -5,8 +5,10 @@ This is a simple experiment to test how to implement CRDTs. Conflict-free Replic
 We use a DAG to represent the causal order of operations. Each node in the DAG is label with an operation. The edges represent the order of operations. Each process has its own copy of the DAG. To apply an operation to the CRDT, a process appends a new vertex to its DAG and label it with the operation. It also adds an edge to each "head" of the DAG, which are the vertices that are not the target of any edge (leaves). Each CRDT is also defined with a reconciliation function that is used to compute a total order of operation to execute to get the current state of the CRDT.
 
 ## Branches
-- local-experiments: run multi-processes experiments in docker (local)
 - networking: network features (remote)
+- docker-experiments: run multi-processes experiments in docker (local but use networking)
+- threads-experiments: run experiments with multiple threads simulating processes (local)
+
 
 ## TODO
 - (real) networking
