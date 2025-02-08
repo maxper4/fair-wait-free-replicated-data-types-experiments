@@ -27,6 +27,13 @@ impl VertexLabel {
             process_id: process
         }
     }
+
+    pub fn new_from_op(op: Operation, process: u32) -> VertexLabel {
+        VertexLabel {
+            op: op,
+            process_id: process
+        }
+    }
 }
 
 #[derive(Clone)]

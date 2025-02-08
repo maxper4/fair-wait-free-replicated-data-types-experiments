@@ -1,33 +1,44 @@
-use crate::crdt::{VertexLabel, CRDT};
-use std::sync::mpsc::{Sender, Receiver};
+use crate::crdt::{VertexLabel, Operation, CRDT};
+use tokio::{select, sync::mpsc::{Receiver, Sender}};
 
 pub struct Process<S: Clone, I: Iterator<Item = VertexLabel>> where I:Clone {
     pub id: u32,
     crdt: CRDT<S, I>,
     in_chan: Receiver<VertexLabel>,
     out_chan: Sender<VertexLabel>,
+    pub execute_chan_sender: Sender<Operation>,
+    execute_chan_receiver: Receiver<Operation>,
 }
 
 impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> Process<S, I> where I:Clone {
     pub fn new(id: u32, crdt: &CRDT<S, I>, in_chan: Receiver<VertexLabel>, out_chan: &Sender<VertexLabel>) -> Process<S, I> {
+        let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
         Process { 
             id: id, 
             crdt: crdt.clone(),
             in_chan: in_chan,
             out_chan: out_chan.clone(),
+            execute_chan_sender: execute_chan_sender,
+            execute_chan_receiver: execute_chan_receiver,
         }
     }
 
-    pub fn run(&mut self) { // TODO: use async to read incoming op and apply some
-        self.crdt.apply(VertexLabel::new(0, self.id));
-        self.out_chan.send(VertexLabel::new(0, self.id)).unwrap();
-        self.crdt.apply(VertexLabel::new(0, self.id));
-        self.out_chan.send(VertexLabel::new(0, self.id)).unwrap();
+    pub async fn run(&mut self) {
+        loop {
+            select! {
+                Some(v) = self.in_chan.recv() => {
+                    if v.process_id != self.id {
+                        println!("Process {} received {} from {}", self.id, v.op.id, v.process_id);
+                        self.crdt.apply(v);
+                    }
+                }
+                Some(op) = self.execute_chan_receiver.recv() => {
+                    let v = VertexLabel::new_from_op(op.clone(), self.id);
+                    self.crdt.apply(v.clone());
+                    println!("Process {} applied {}", self.id, v.op.id);
 
-        for i in self.in_chan.iter() {
-            if i.process_id != self.id {
-                println!("Process {} received {} from {}", self.id, i.op.id, i.process_id);
-                self.crdt.apply(i);
+                    self.out_chan.send(v).await;
+                }
             }
         }
     }

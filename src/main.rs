@@ -4,15 +4,16 @@ mod process;
 
 use std::vec;
 
-use crdt::{VertexLabel, CRDT};
+use crdt::{Operation, VertexLabel, CRDT};
 use dag::Dag;
 use process::Process;
 
-use std::sync::mpsc::{Sender, Receiver};
-use std::sync::mpsc;
+use tokio::sync::mpsc::{Sender, Receiver};
+use tokio::sync::mpsc;
 use std::thread;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 
     let basic_exploration = |dag: &Dag<VertexLabel>| {    // works when there is no conflict
         let mut toexplore = vec![dag.get_root()];
@@ -119,28 +120,27 @@ fn main() {
     println!("Concurrent Set {:?}", seq);
 
     let n = 4;
-    let (processes_to_network_sender, processes_to_network_receiver): (Sender<VertexLabel>, Receiver<VertexLabel>) = mpsc::channel();
+    let (processes_to_network_sender, mut processes_to_network_receiver): (Sender<VertexLabel>, Receiver<VertexLabel>) = tokio::sync::mpsc::channel(100);
     let mut network_to_processes_senders = vec![];
     let mut threads = vec![];
     for i in 0..n {
-        let (network_to_process_sender, network_to_process_receiver): (Sender<VertexLabel>, Receiver<VertexLabel>) = mpsc::channel();
+        let (network_to_process_sender, network_to_process_receiver): (Sender<VertexLabel>, Receiver<VertexLabel>) = tokio::sync::mpsc::channel(100);
         network_to_processes_senders.push(network_to_process_sender);
         let mut process = Process::new(i, &counter, network_to_process_receiver, &processes_to_network_sender);
-        let t = thread::spawn(move || {
-            process.run();
+        let executor = process.execute_chan_sender.clone();
+        let handle = tokio::spawn(async move {
+            process.run().await;
         });
-
-        threads.push(t);
+        executor.send(Operation::new(0)).await;
+        threads.push(handle);
     }
-
+    
     // networking
-    for msg in processes_to_network_receiver {  // TODO: add some asynchrony by hand?
+    while let Some(v) = processes_to_network_receiver.recv().await {
         for sender in network_to_processes_senders.iter() {
-            sender.send(msg.clone()).expect("oops! the network sender panicked");
+            sender.send(v.clone()).await.expect("oops! the network sender panicked");
         }
     }
-
-    for t in threads {
-        t.join().expect("oops! the child thread panicked");
-    }
+  
+  
 }
