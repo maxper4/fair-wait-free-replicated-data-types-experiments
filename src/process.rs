@@ -3,7 +3,7 @@ use tokio::{select, sync::mpsc::{Receiver, Sender}};
 
 pub struct Process<S: Clone, I: Iterator<Item = VertexLabel>> where I:Clone {
     pub id: u32,
-    crdt: CRDT<S, I>,
+    pub crdt: CRDT<S, I>,
     in_chan: Receiver<VertexLabel>,
     out_chan: Sender<VertexLabel>,
     pub execute_chan_sender: Sender<Operation>,
@@ -29,7 +29,7 @@ impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> Process<S, I> where I:Clone
                 Some(v) = self.in_chan.recv() => {
                     if v.process_id != self.id {
                         println!("Process {} received {} from {}", self.id, v.op.id, v.process_id);
-                        self.crdt.apply(v);
+                        self.crdt.apply(v); // TODO: this behave like it is a new operation, but it should be a reconciliation
                     }
                 }
                 Some(op) = self.execute_chan_receiver.recv() => {
@@ -40,6 +40,9 @@ impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> Process<S, I> where I:Clone
                     self.out_chan.send(v).await;
                 }
             }
+
+            crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
+
         }
     }
 }

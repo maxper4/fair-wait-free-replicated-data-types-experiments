@@ -1,6 +1,7 @@
 mod dag;
 mod crdt;
 mod process;
+mod rendering;
 
 use std::collections::HashMap;
 use std::vec;
@@ -240,6 +241,4 @@ async fn main() {
             sender.send(v.clone()).await.expect("oops! the network sender panicked");
         }
     }
-  
-  
 }
