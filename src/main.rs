@@ -7,12 +7,10 @@ use std::collections::HashMap;
 use std::vec;
 
 use crdt::{Operation, VertexLabel, CRDT};
-use dag::Dag;
-use process::Process;
+use dag::{Dag, Vertex, VertexId};
+use process::{CRDTOperationMessage, Process};
 
 use tokio::sync::mpsc::{Sender, Receiver};
-use tokio::sync::mpsc;
-use std::thread;
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +21,7 @@ async fn main() {
         while toexplore.len() > 0 {
             let head = toexplore.pop().unwrap();
             order.push(head.label.clone());
-            toexplore.extend(dag.get_edges_to_vertex(head.id as usize).into_iter());
+            toexplore.extend(dag.get_edges_to_vertex(head.id).into_iter());
         }
         order.into_iter()
     };
@@ -34,7 +32,7 @@ async fn main() {
         while toexplore.len() > 0 {
             let head = toexplore.pop().unwrap();
             order.push(head.label.clone());
-            let children = dag.get_edges_to_vertex(head.id as usize);
+            let children = dag.get_edges_to_vertex(head.id);
             if children.len() > 1 {
                 let mut children = children.into_iter().collect::<Vec<_>>();
                 children.sort_by(|x, y| x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
@@ -87,7 +85,7 @@ async fn main() {
         while toexplore.len() > 0 {
             let head = toexplore.pop().unwrap();
             order.push(head.label.clone());
-            let children = dag.get_edges_to_vertex(head.id as usize);
+            let children = dag.get_edges_to_vertex(head.id);
             if children.len() > 1 {
                 let mut children = children.into_iter().collect::<Vec<_>>();
                 children.sort_by(|x, y| x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
@@ -152,10 +150,10 @@ async fn main() {
 
     let mut counter = CRDT::new(0, vec![|x| x + 1], basic_exploration);
 
-    counter.apply(VertexLabel::new(0, 0));
-    counter.apply(VertexLabel::new(0, 0));
-    counter.apply(VertexLabel::new(0, 0));
-    
+    counter.apply(Operation::new(0), 0);
+    counter.apply(Operation::new(0), 0);
+    counter.apply(Operation::new(0), 0);
+
     let result = counter.read();
     let seq = basic_exploration(&counter.dag).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Counter {:?} = {}", seq, result);
@@ -164,9 +162,9 @@ async fn main() {
     let remove = |mut x: Vec<i32>| { x.pop(); x };
 
     let mut set = CRDT::new(vec![1, 2, 3], vec![add, remove], basic_exploration);
-    set.apply(VertexLabel::new(1, 0));
-    set.apply(VertexLabel::new(1, 0));
-    set.apply(VertexLabel::new(0, 0));
+    set.apply(Operation::new(1), 0);
+    set.apply(Operation::new(1), 0);
+    set.apply(Operation::new(0), 0);
 
     let result = set.read();
     let seq = basic_exploration(&set.dag).map(|x| x.op.id).collect::<Vec<usize>>();
@@ -181,13 +179,13 @@ async fn main() {
     let add_remove_reconciliation = handling_conflict(add_remove_order);
     // adding concurrency for debugging
     let mut concurrent_set_dag = Dag::new(VertexLabel::new(0, 0));
-    concurrent_set_dag.add_vertex(vec![0], VertexLabel::new(0, 0));  // no concurrent, 0 stays
-    concurrent_set_dag.add_vertex(vec![1], VertexLabel::new(1, 0));
-    concurrent_set_dag.add_vertex(vec![1], VertexLabel::new(0, 0));  // concurrent, 1 wins
-    concurrent_set_dag.add_vertex(vec![2, 3], VertexLabel::new(0, 0));
-    concurrent_set_dag.add_vertex(vec![2, 3], VertexLabel::new(1, 0));
-    concurrent_set_dag.add_vertex(vec![2, 3], VertexLabel::new(0, 0)); 
-    concurrent_set_dag.add_vertex(vec![2, 3], VertexLabel::new(1, 0));   // 4 concurrent, [1, 1] wins
+    concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, 0)));  // no concurrent, 0 stays
+    concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, 0)));
+    concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, 0)));  // concurrent, 1 wins
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(0, 0)));
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(1, 0)));
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(0, 0))); 
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(1, 0)));   // 4 concurrent, [1, 1] wins
     
     let seq = add_remove_reconciliation(&concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Concurrent Set {:?}", seq);
@@ -198,47 +196,65 @@ async fn main() {
     ];
     // adding concurrency for debugging
     let mut fair_concurrent_set_dag = Dag::new(VertexLabel::new(0, 0));
-    fair_concurrent_set_dag.add_vertex(vec![0], VertexLabel::new(0, 1));  // no concurrent, 0 stays
-    fair_concurrent_set_dag.add_vertex(vec![1], VertexLabel::new(1, 2));
-    fair_concurrent_set_dag.add_vertex(vec![1], VertexLabel::new(0, 1));  // concurrent, 1 wins (id higher)
-    fair_concurrent_set_dag.add_vertex(vec![2, 3], VertexLabel::new(1, 2)); //p2 is rollbacked => score of 1
-    fair_concurrent_set_dag.add_vertex(vec![2, 3], VertexLabel::new(0, 1)); // concurrent, 0 wins (score higher)
-    fair_concurrent_set_dag.add_vertex(vec![4, 5], VertexLabel::new(1, 2));
-    fair_concurrent_set_dag.add_vertex(vec![4, 5], VertexLabel::new(0, 1)); 
-    fair_concurrent_set_dag.add_vertex(vec![4, 5], VertexLabel::new(0, 3)); // 3 concurrent, 1 (p2) wins (score higher)  (p1:1, p3:1) 
-    fair_concurrent_set_dag.add_vertex(vec![6, 7, 8], VertexLabel::new(0, 2));
-    fair_concurrent_set_dag.add_vertex(vec![6, 7, 8], VertexLabel::new(0, 1)); 
-    fair_concurrent_set_dag.add_vertex(vec![6, 7, 8], VertexLabel::new(1, 3)); // 3 concurrent, 1 (p3) wins (p1: 2, p2: 1, p3:0)
-    fair_concurrent_set_dag.add_vertex(vec![9, 10, 11], VertexLabel::new(0, 2));
-    fair_concurrent_set_dag.add_vertex(vec![9, 10, 11], VertexLabel::new(1, 1)); 
-    fair_concurrent_set_dag.add_vertex(vec![9, 10, 11], VertexLabel::new(0, 3)); // 3 concurrent, 1 (p1) wins (p1: 0, p2: 2, p3: 1)
-    fair_concurrent_set_dag.add_vertex(vec![12, 13, 14], VertexLabel::new(1, 2));
-    fair_concurrent_set_dag.add_vertex(vec![12, 13, 14], VertexLabel::new(0, 1)); 
-    fair_concurrent_set_dag.add_vertex(vec![12, 13, 14], VertexLabel::new(0, 3)); // 3 concurrent, 1 (p2) wins
+    fair_concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, 1)));  // no concurrent, 0 stays
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, 2)));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, 1)));  // concurrent, 1 wins (id higher)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(1, 2))); //p2 is rollbacked => score of 1
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(0, 1))); // concurrent, 0 wins (score higher)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(1, 2)));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(0, 1))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(8, 0), VertexLabel::new(0, 3))); // 3 concurrent, 1 (p2) wins (score higher)  (p1:1, p3:1) 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(9, 0), VertexLabel::new(0, 2)));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(10, 0), VertexLabel::new(0, 1))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(11, 0), VertexLabel::new(1, 3))); // 3 concurrent, 1 (p3) wins (p1: 2, p2: 1, p3:0)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(12, 0), VertexLabel::new(0, 2)));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(13, 0), VertexLabel::new(1, 1))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(14, 0), VertexLabel::new(0, 3))); // 3 concurrent, 1 (p1) wins (p1: 0, p2: 2, p3: 1)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(15, 0), VertexLabel::new(1, 2)));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(16, 0), VertexLabel::new(0, 1))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, 3))); // 3 concurrent, 1 (p2) wins
     let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
     let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Fair concurrent Set {:?}", seq);
 
+    let counter = CRDT::new(0, vec![|x| x + 1], basic_exploration);
     let n = 4;
-    let (processes_to_network_sender, mut processes_to_network_receiver): (Sender<VertexLabel>, Receiver<VertexLabel>) = tokio::sync::mpsc::channel(100);
+    let (processes_to_network_sender, mut processes_to_network_receiver): (Sender<CRDTOperationMessage>, Receiver<CRDTOperationMessage>) = tokio::sync::mpsc::channel(100);
     let mut network_to_processes_senders = vec![];
     let mut threads = vec![];
+    let mut executors = vec![];
     for i in 0..n {
-        let (network_to_process_sender, network_to_process_receiver): (Sender<VertexLabel>, Receiver<VertexLabel>) = tokio::sync::mpsc::channel(100);
+        let (network_to_process_sender, network_to_process_receiver): (Sender<CRDTOperationMessage>, Receiver<CRDTOperationMessage>) = tokio::sync::mpsc::channel(100);
         network_to_processes_senders.push(network_to_process_sender);
         let mut process = Process::new(i, &counter, network_to_process_receiver, &processes_to_network_sender);
         let executor = process.execute_chan_sender.clone();
         let handle = tokio::spawn(async move {
             process.run().await;
         });
-        executor.send(Operation::new(0)).await;
+        executors.push(executor);
         threads.push(handle);
     }
-    
-    // networking
-    while let Some(v) = processes_to_network_receiver.recv().await {
-        for sender in network_to_processes_senders.iter() {
-            sender.send(v.clone()).await.expect("oops! the network sender panicked");
+
+    let network_task = tokio::spawn(async move {
+        // networking
+        while let Some(v) = processes_to_network_receiver.recv().await {
+            for i in 0..n {
+                let sender = network_to_processes_senders[i as usize].clone();
+                let v = v.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis((100 * i).into())).await;   // simulate random network delay
+                    sender.send(v.clone()).await.expect("oops! the network sender panicked");
+                });
+            }
         }
-    }
+    });
+
+    let executing_task = tokio::spawn(async move {
+        for i in 0..n {
+            tokio::time::sleep(std::time::Duration::from_millis((100 * i).into())).await;   // simulate random processor speed
+            executors[i as usize].send(Operation::new(0)).await;
+        }
+    });
+
+    tokio::join!(network_task, executing_task);
 }

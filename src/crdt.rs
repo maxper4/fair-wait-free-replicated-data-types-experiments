@@ -1,4 +1,4 @@
-use crate::dag::Dag;
+use crate::dag::{Dag, Vertex, VertexId};
 
 #[derive(Clone)]
 pub struct Operation {
@@ -14,10 +14,11 @@ impl Operation {
     }
 }
 
+
 #[derive(Clone)]
 pub struct VertexLabel {
     pub op: Operation,
-    pub process_id: u32
+    pub process_id: u32     // TODO: we store 2 times the process id, one in the vertex id and one here
 }
 
 impl VertexLabel {
@@ -42,6 +43,7 @@ pub struct CRDT<S: Clone, I: Iterator<Item = VertexLabel>> {
     reconciliation: fn(&Dag<VertexLabel>) -> I,
     pub dag: Dag<VertexLabel>,
     initial_state: S,
+    local_id: usize,
 }
 
 impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> CRDT<S, I> {
@@ -51,12 +53,22 @@ impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> CRDT<S, I> {
             dag: Dag::new(VertexLabel::new(0, 0)),    // No process should have id 0
             reconciliation: rec,
             initial_state: init,
+            local_id: 1,
         }
     }
 
-    pub fn apply(&mut self, vertex: VertexLabel) {
-        let heads = self.dag.get_heads();
-        self.dag.add_vertex(heads, vertex);
+    pub fn apply(&mut self, op: Operation, from: u32) -> Vec<VertexId> {
+        let mut heads = self.dag.get_heads();
+        let id = VertexId::new(self.local_id, from);
+        self.local_id += 1;
+        let v = Vertex::new(id, VertexLabel::new_from_op(op, from));
+        self.dag.add_vertex(heads.clone(), v);
+        heads.push(id);
+        heads
+    }
+
+    pub fn apply_with_causal_context(&mut self, vertex: Vertex<VertexLabel>, causal_context: Vec<VertexId>) {
+        self.dag.add_vertex(causal_context, vertex);
     }
 
     pub fn read(&self) -> S {

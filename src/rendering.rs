@@ -17,7 +17,7 @@ fn to_graph_viz<T>(d: &Dag<T>) -> graphviz_rust::dot_structures::Graph {
     while toexplore.len() > 0 {
         let head = toexplore.pop().unwrap();
         g.add_stmt(stmt!(node!(head.id; attr!("label", head.id.to_string()))));
-        let children = d.get_edges_to_vertex(head.id as usize);
+        let children = d.get_edges_to_vertex(head.id);
         for c in children {
             if explored.contains(&head.id) {
                 continue;
