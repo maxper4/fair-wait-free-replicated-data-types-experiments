@@ -10,139 +10,171 @@ use crdt::{Operation, VertexLabel, CRDT};
 use dag::{Dag, Vertex, VertexId};
 use process::{CRDTOperationMessage, Process};
 
+use rendering::print_graph;
 use tokio::sync::mpsc::{Sender, Receiver};
 
 #[tokio::main]
 async fn main() {
 
     let basic_exploration = |dag: &Dag<VertexLabel>| {    // works when there is no conflict
-        let mut toexplore = vec![dag.get_root()];
+        let mut toexplore = vec![VertexId::new(0, 0)];
         let mut order = vec![];
+        let mut children = vec![];
+
         while toexplore.len() > 0 {
             let head = toexplore.pop().unwrap();
-            order.push(head.label.clone());
-            toexplore.extend(dag.get_edges_to_vertex(head.id).into_iter());
+            let v = dag.get_vertex(head).unwrap();
+            order.push(v.label.clone());
+            for c in dag.get_edges_to_vertex(head) {
+                if !children.contains(&c.id) {
+                    children.push(c.id);
+                }
+            }
+            if toexplore.len() == 0 {
+                toexplore.extend(children.clone());
+                children.clear();
+            }
         }
         order.into_iter()
     };
 
     let handling_conflict = |op_order: Vec<Vec<Option<usize>>>| { move |dag: &Dag<VertexLabel>| {    // works when there is conflict, returns a function given an order
-        let mut toexplore = vec![dag.get_root()];
+        let mut toexplore = vec![VertexId::new(0, 0)];
         let mut order = vec![];
+        let mut children = vec![];
+
         while toexplore.len() > 0 {
             let head = toexplore.pop().unwrap();
-            order.push(head.label.clone());
-            let children = dag.get_edges_to_vertex(head.id);
-            if children.len() > 1 {
-                let mut children = children.into_iter().collect::<Vec<_>>();
-                children.sort_by(|x, y| x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
-                
-                while children.len() > 1 {    // take concurrent operations 2 by 2 and check conflicts
-                    let v1 = children.pop().unwrap();
-                    let mut conflicted = false;
-                    let mut toremove = vec![];
+            for c in dag.get_edges_to_vertex(head) {
+                if !children.contains(&c.id) {
+                    children.push(c.id);
+                }
+            }
 
-                    for v2 in children.iter() {
-                        let winner = op_order[v1.label.op.id][v2.label.op.id];
-                        match winner {
-                            Some(label) => { 
-                                if label == v1.label.op.id { 
-                                    toremove.push(*v2);
+            if toexplore.len() == 0 {   // we explored all vertices at the same level, children is now all vertices at distance k+1
+                toexplore.extend(children.clone());
+                let mut next_children = children.clone().into_iter().map(|c| dag.get_vertex(c).unwrap()).collect::<Vec<_>>();
+                children.clear();
+
+                if next_children.len() > 1 {
+                    next_children.sort_by(|x, y| x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
+                    
+                    while next_children.len() > 1 {    // take concurrent operations 2 by 2 and check conflicts
+                        let v1 = next_children.pop().unwrap();
+                        let mut conflicted = false;
+                        let mut toremove = vec![];
+    
+                        for v2 in next_children.iter() {
+                            let winner = op_order[v1.label.op.id][v2.label.op.id];
+                            match winner {
+                                Some(label) => { 
+                                    if label == v1.label.op.id { 
+                                        toremove.push(*v2);
+                                    }
+                                    else { 
+                                        conflicted = true; 
+                                        break; 
+                                    }
                                 }
-                                else { 
-                                    conflicted = true; 
-                                    break; 
-                                }
+                                None => { continue; }   // commutes
                             }
-                            None => { continue; }   // commutes
+                        }
+                        
+                        // clean loosers
+                        for v in toremove.into_iter() {
+                            next_children.retain(|x| x.id != v.id);
+                        }
+    
+                        if !conflicted {    // if no conflict with the whole set of concurrent operations, add in the order
+                            order.push(v1.label.clone());
                         }
                     }
-                    
-                    // clean loosers
-                    for v in toremove.into_iter() {
-                        children.retain(|x| x.id != v.id);
-                    }
-
-                    if !conflicted {    // if no conflict with the whole set of concurrent operations, add in the order
-                        toexplore.push(v1);
-                    }
+                } 
+                if next_children.len() == 1 {
+                    order.push(next_children.pop().unwrap().label.clone());
                 }
-                if children.len() == 1 {
-                    toexplore.push(children.pop().unwrap());
-                }
-            } else {
-                toexplore.extend(children.into_iter());
             }
         }
         order.into_iter()
     }};
 
     let fair_reconciliation = |op_conflicts: Vec<Vec<bool>>| { move |dag: &Dag<VertexLabel>| {    // reconciliation is based on process fairness rather than semantically
-        let mut toexplore = vec![dag.get_root()];
+        let mut toexplore = vec![VertexId::new(0, 0)];
         let mut order = vec![];
+        let mut children = vec![];
         let mut scores:HashMap<u32, u32> = HashMap::new();
 
         while toexplore.len() > 0 {
             let head = toexplore.pop().unwrap();
-            order.push(head.label.clone());
-            let children = dag.get_edges_to_vertex(head.id);
-            if children.len() > 1 {
-                let mut children = children.into_iter().collect::<Vec<_>>();
-                children.sort_by(|x, y| x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
+            for c in dag.get_edges_to_vertex(head) {
+                if !children.contains(&c.id) {
+                    children.push(c.id);
+                }
+            }
+            if toexplore.len() == 0 {   // we explored all vertices at the same level, children is now all vertices at distance k+1
+                toexplore.extend(children.clone());
+                let mut next_children = children.clone().into_iter().map(|c| dag.get_vertex(c).unwrap()).collect::<Vec<_>>();
+                children.clear();
 
-                let mut winners = vec![];
-                let mut loosers = vec![];
-                
-                while children.len() > 1 {    // take concurrent operations 2 by 2 and check conflicts
-                    let v1 = children.pop().unwrap();
-                    let mut conflicted = false;
-                    let mut toremove = vec![];
-
-                    for v2 in children.iter() {
-                        let conflict = op_conflicts[v1.label.op.id][v2.label.op.id];
-                        if conflict {
-                            let p1 = v1.label.process_id;
-                            let p2 = v2.label.process_id;
-                            let score_p1 = *scores.get(&p1).unwrap_or(&0);
-                            let score_p2 = *scores.get(&p2).unwrap_or(&0);
-
-                            if score_p1 > score_p2 || (score_p1 == score_p2 && p1 >= p2) {
-                                toremove.push(*v2);
-                            } else {
-                                conflicted = true;
+                if next_children.len() > 1 {
+                    next_children.sort_by(|x, y| x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
+    
+                    let mut winners = vec![];
+                    let mut loosers = vec![];
+                    
+                    while next_children.len() > 1 {    // take concurrent operations 2 by 2 and check conflicts
+                        let v1 = next_children.pop().unwrap();
+                        let mut conflicted = false;
+                        let mut toremove = vec![];
+    
+                        for v2 in next_children.iter() {
+                            let conflict = op_conflicts[v1.label.op.id][v2.label.op.id];
+                            if conflict {
+                                let p1 = v1.label.process_id;
+                                let p2 = v2.label.process_id;
+                                let score_p1 = *scores.get(&p1).unwrap_or(&0);
+                                let score_p2 = *scores.get(&p2).unwrap_or(&0);
+    
+                                if score_p1 > score_p2 || (score_p1 == score_p2 && p1 >= p2) {
+                                    toremove.push(*v2);
+                                } else {
+                                    conflicted = true;
+                                }
                             }
                         }
+                        
+                        // clean loosers
+                        for v in toremove.into_iter() {
+                            next_children.retain(|x| x.id != v.id);
+                            loosers.push(v);
+                        }
+    
+                        if conflicted {
+                            loosers.push(v1);
+                        } else {    // if no conflict with the whole set of concurrent operations, add in the order
+                            winners.push(v1);
+                        }
                     }
-                    
-                    // clean loosers
-                    for v in toremove.into_iter() {
-                        children.retain(|x| x.id != v.id);
-                        loosers.push(v);
+                    if next_children.len() == 1 {
+                        let v = next_children.pop().unwrap();
+                        winners.push(v);
                     }
-
-                    if conflicted {
-                        loosers.push(v1);
-                    } else {    // if no conflict with the whole set of concurrent operations, add in the order
-                        toexplore.push(v1);
-                        winners.push(v1);
+    
+                    for v in winners {
+                        scores.insert(v.label.process_id, 0);
+                        order.push(v.label.clone());
+                    }
+    
+                    for v in loosers {
+                        let old_score = *scores.get(&v.label.process_id).unwrap_or(&0);
+                        scores.insert(v.label.process_id, old_score + 1);
                     }
                 }
-                if children.len() == 1 {
-                    let v = children.pop().unwrap();
-                    winners.push(v);
-                    toexplore.push(v);
-                }
-
-                for v in winners {
+                if next_children.len() == 1 {
+                    let v = next_children.pop().unwrap();
+                    order.push(v.label.clone());
                     scores.insert(v.label.process_id, 0);
                 }
-
-                for v in loosers {
-                    let old_score = *scores.get(&v.label.process_id).unwrap_or(&0);
-                    scores.insert(v.label.process_id, old_score + 1);
-                }
-            } else {
-                toexplore.extend(children.into_iter());
             }
         }
         order.into_iter()
@@ -215,7 +247,7 @@ async fn main() {
     fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, 3))); // 3 concurrent, 1 (p2) wins
     let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
     let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
-    println!("Fair concurrent Set {:?}", seq);
+    println!("Fair concurrent Set {:?}", seq);  // should be [0, 1, 0, 1, 1, 1, 1]
 
     let counter = CRDT::new(0, vec![|x| x + 1], basic_exploration);
     let n = 4;

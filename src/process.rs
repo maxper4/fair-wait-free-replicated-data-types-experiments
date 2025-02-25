@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::{crdt::{Operation, VertexLabel, CRDT}, dag::{Vertex, VertexId}};
 use tokio::{select, sync::mpsc::{Receiver, Sender}};
 
@@ -16,7 +18,7 @@ impl CRDTOperationMessage {
     }
 }
 
-pub struct Process<S: Clone, I: Iterator<Item = VertexLabel>> where I:Clone {
+pub struct Process<S: Clone, I: Iterator<Item = VertexLabel>> where I:Clone, S: Debug {
     pub id: u32,
     pub crdt: CRDT<S, I>,
     in_chan: Receiver<CRDTOperationMessage>,
@@ -25,7 +27,7 @@ pub struct Process<S: Clone, I: Iterator<Item = VertexLabel>> where I:Clone {
     execute_chan_receiver: Receiver<Operation>,
 }
 
-impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> Process<S, I> where I:Clone {
+impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> Process<S, I> where I:Clone, S: Debug {
     pub fn new(id: u32, crdt: &CRDT<S, I>, in_chan: Receiver<CRDTOperationMessage>, out_chan: &Sender<CRDTOperationMessage>) -> Process<S, I> {
         let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
         Process { 
@@ -63,6 +65,7 @@ impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> Process<S, I> where I:Clone
             }
 
             crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
+            println!("Process {} is in state {:?}", self.id, self.crdt.read());
 
         }
     }
