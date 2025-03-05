@@ -22,7 +22,7 @@ use crate::process::CRDTOperationMessage;
 pub async fn run() {
     let config = Config::get("config.toml");
     println!("{:?}", config.peers[0].ip);
-    let (network_chan, network_task): (Sender<CRDTOperationMessage<()>>, tokio::task::JoinHandle<()>) = network::run(config).await;
+    let (network_chan, network_task): (Sender<CRDTOperationMessage<()>>, tokio::task::JoinHandle<()>) = network::run(&config).await;
     tokio::join!(network_task);
 
     fn mutate_counter(state: &u32, _op: &Operation<()>) -> u32 {
