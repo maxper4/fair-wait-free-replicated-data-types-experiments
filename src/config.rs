@@ -4,9 +4,9 @@ use serde::{Deserialize};
 
 #[derive(Deserialize, Clone)]
 pub struct Config {
-    pub id: u32,
-    pub ip: String,
-    pub peers: Vec<Peer>,
+   pub id: u32,
+   pub ip: String,
+   pub peers: Vec<Peer>,
 }
 
 #[derive(Deserialize, Clone)]
