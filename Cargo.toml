@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 graphviz-rust = "0.9.3"
 tokio = { version = "1", features = ["full"] }
+toml = "0.8.20"
+serde = { version = "1.0", features = ["derive"] }
