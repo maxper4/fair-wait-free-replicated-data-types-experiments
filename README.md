@@ -15,6 +15,4 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 
 ## TODO
 - handle legality
-- (real) networking
-- run multi processes experiments in docker
 - translate debug in main to proper tests

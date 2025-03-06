@@ -248,45 +248,4 @@ async fn main() {
     let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
     let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Fair concurrent Set {:?}", seq);  // should be [0, 1, 0, 1, 1, 1, 1]
-
-    let counter = CRDT::new(0, vec![|x| x + 1], basic_exploration);
-    let n = 4;
-    let (processes_to_network_sender, mut processes_to_network_receiver): (Sender<CRDTOperationMessage>, Receiver<CRDTOperationMessage>) = tokio::sync::mpsc::channel(100);
-    let mut network_to_processes_senders = vec![];
-    let mut threads = vec![];
-    let mut executors = vec![];
-    for i in 0..n {
-        let (network_to_process_sender, network_to_process_receiver): (Sender<CRDTOperationMessage>, Receiver<CRDTOperationMessage>) = tokio::sync::mpsc::channel(100);
-        network_to_processes_senders.push(network_to_process_sender);
-        let mut process = Process::new(i, &counter, network_to_process_receiver, &processes_to_network_sender);
-        let executor = process.execute_chan_sender.clone();
-        let handle = tokio::spawn(async move {
-            process.run().await;
-        });
-        executors.push(executor);
-        threads.push(handle);
-    }
-
-    let network_task = tokio::spawn(async move {
-        // networking
-        while let Some(v) = processes_to_network_receiver.recv().await {
-            for i in 0..n {
-                let sender = network_to_processes_senders[i as usize].clone();
-                let v = v.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis((100 * i).into())).await;   // simulate random network delay
-                    sender.send(v.clone()).await.expect("oops! the network sender panicked");
-                });
-            }
-        }
-    });
-
-    let executing_task = tokio::spawn(async move {
-        for i in 0..n {
-            tokio::time::sleep(std::time::Duration::from_millis((100 * i).into())).await;   // simulate random processor speed
-            executors[i as usize].send(Operation::new(0)).await;
-        }
-    });
-
-    tokio::join!(network_task, executing_task);
 }
