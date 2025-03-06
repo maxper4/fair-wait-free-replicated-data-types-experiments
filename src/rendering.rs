@@ -38,8 +38,13 @@ pub fn print_graph<T>(d: &Dag<T>, file_name: String) where T:Clone {
             let mut file = fs::OpenOptions::new();
             file.write(true);
             file.create(true);
-            let mut file = file.open(format!("display/{file_name}")).unwrap();
-            file.write_all(&e).unwrap();
+            let file = file.open(format!("./{file_name}"));
+            match file {
+                Ok(mut f) => {
+                    f.write_all(&e).unwrap();
+                }
+                Err(e) => { println!("Error printing graph: {:?}", e); }
+            }
         }
         Err(e) =>{ println!("Error: {:?}", e); }
     }

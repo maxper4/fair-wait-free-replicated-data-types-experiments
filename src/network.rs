@@ -19,6 +19,7 @@ pub async fn run<P>(config: &Config) -> (Sender<CRDTOperationMessage<P>>, Receiv
         accept_connections(ip, peers_to_local_sender).await;
     });
 
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await; // TODO: temporary while there is no dynamic peer addition
     let mut out_peers = vec![];
     for peer in peers {  // TODO dynamicly add/remove peers
         let stream = TcpStream::connect(peer.ip).await;    

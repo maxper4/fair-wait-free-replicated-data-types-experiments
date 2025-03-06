@@ -58,12 +58,8 @@ impl <'a, S: Clone+Debug, P> Process<S, P> where P: OperationParameter {
             select! {
                 Some(m) = self.in_chan.recv() => {
                     let v = m.vertex;
-                    if v.id.process_id != self.id {
-                        println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
-                        self.crdt.append_with_causal_context(v, m.causal_context);
-                    } else {
-                        println!("Process {} received its own operation", self.id);
-                    }
+                    println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
+                    self.crdt.append_with_causal_context(v, m.causal_context);
                 }
                 Some(op) = self.execute_chan_receiver.recv() => {
                     match self.crdt.append(op.clone(), self.id) {
