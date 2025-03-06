@@ -25,7 +25,7 @@ pub async fn run() {
     let (network_chan, network_task): (Sender<CRDTOperationMessage<()>>, tokio::task::JoinHandle<()>) = network::run(&config).await;
     tokio::join!(network_task);
 
-    fn mutate_counter(state: &u32, _op: &Operation<()>) -> u32 {
+    fn mutate_counter(state: &u32, op: &Operation<()>) -> u32 {
         *state + 1
     }
 
@@ -38,11 +38,21 @@ pub async fn run() {
             });
 
     let execute_task = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            let op = Operation::new(0, ());
-            process_executor.send(op).await.unwrap();
+        if config.id == 1 {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                let op = Operation::new(0, ());
+                process_executor.send(op).await.unwrap();
+            }
         }
+        if config.id == 2 {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                let op = Operation::new(0, ());
+                process_executor.send(op).await.unwrap();
+            }
+        }
+        
     });
 
     // TODO: here execute ops

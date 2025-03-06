@@ -12,6 +12,48 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 - docker-experiments: run multi-processes experiments in docker (local but use networking)
 - threads-experiments: run experiments with multiple threads simulating processes (local)
 
+## Install
+
+1. Make sure you have docker installed and setup correctly. To test it, type:
+
+```text
+docker version
+```
+
+Otherwise, please follow the [official documentation to install it](https://docs.docker.com/engine/install/ubuntu/).
+
+2. You may want to use docker without sudo. To do so, type:
+
+```text
+sudo groupadd docker
+sudo usermod -aG docker $USER
+sudo service docker restart
+```
+
+To try it type:
+
+```text
+docker ps
+```
+
+If it's not working, you can try with :
+
+```text
+sudo chmod 666 /var/run/docker.sock
+```
+
+4. Make sure you have docker-compose installed. To test it, type:
+
+```text
+docker-compose version
+```
+
+Otherwise, you can install it with:
+
+```text
+sudo apt-get update
+sudo apt-get install docker-compose
+```
 
 ## TODO
 - test fairness

@@ -1,0 +1,90 @@
+#!/bin/bash
+
+for i in "$@"; do
+  case $i in
+    -p=*|--processes=*)
+      p="${i#*=}"
+      shift # past argument=value
+      ;;
+    -*|--*)
+      echo "Unknown option $i"
+      exit 1
+      ;;
+    *)
+      ;;
+  esac
+done
+
+mkdir -p experiment
+
+# default config if not specified
+if [ -z "$p" ]; then p=4; fi
+
+USER_DOCKER="$(id -u):$(id -g)"
+
+cat << EOF > ./experiment/docker-compose.yml
+version: '3'
+
+services:
+EOF
+
+
+for id in $(seq 1 $p)
+do
+    peers="["
+    for peer_id in $(seq 1 $p)
+    do
+        if [ $peer_id -ne $id ]; then
+            peers+="{ip = 'process$peer_id:4444'},"
+        fi
+    done
+    peers+="]"
+
+    port_host=$((4444+$id))
+    mkdir -p ./experiment/process$id
+cat << EOF > ./experiment/process$id/config.toml
+id = $id
+ip = 'process$id:4444'
+peers = $peers
+EOF
+
+    cat << EOF >> ./experiment/docker-compose.yml
+  process$id:
+    container_name: process$id
+    image: "process"
+    ports:
+      - "$port_host:4444"
+    volumes:
+        - ./process$id:/etc/experiment:rw
+    command: /usr/bin/experiment/crdt-experiment
+    user: ${USER_DOCKER}
+    working_dir: /etc/experiment
+    networks:
+      localnet:
+        aliases:
+          - process$id
+
+EOF
+done
+
+cat << EOF >> ./experiment/docker-compose.yml
+networks:
+  localnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.167.0.0/16
+
+EOF
+
+
+
+if ! [ -z "$(which jq)" ]; then
+  find experiment/ -name 'node[0-9]*' -print0 |
+    while IFS= read -r -d '' node; do
+      tmp=$(mktemp)
+      jq '.chain_id = "fantastyc-testnet"' $node/config/genesis.json> $tmp
+      mv $tmp $node/config/genesis.json
+    done
+fi
