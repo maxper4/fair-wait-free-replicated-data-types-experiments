@@ -16,56 +16,32 @@ use dag::{Dag, Vertex, VertexId};
 use config::Config;
 use tokio::sync::mpsc::Sender;
 
-use crate::process::CRDTOperationMessage;
+use crate::process::{CRDTOperationMessage, Process};
 
 pub async fn run() {
     let config = Config::get("config.toml");
-    println!("{:?}", config.peers[0].ip);
-    let (network_chan, network_task): (Sender<CRDTOperationMessage<()>>, tokio::task::JoinHandle<()>) = network::run(config).await;
-    tokio::join!(network_task);
+    let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
 
-    fn mutate_counter(state: &i32, op: &Operation<()>) -> i32 {
-        state + 1
+    fn mutate_counter(state: &u32, _op: &Operation<()>) -> u32 {
+        *state + 1
     }
-    
+
     let counter = CRDT::new(0, mutate_counter, basic_exploration, total);
-    let n = 4;
-    // let (processes_to_network_sender, mut processes_to_network_receiver): (Sender<CRDTOperationMessage>, Receiver<CRDTOperationMessage>) = tokio::sync::mpsc::channel(100);
-    // let mut network_to_processes_senders = vec![];
-    // let mut threads = vec![];
-    // let mut executors = vec![];
-    // for i in 0..n {
-    //     let (network_to_process_sender, network_to_process_receiver): (Sender<CRDTOperationMessage>, Receiver<CRDTOperationMessage>) = tokio::sync::mpsc::channel(100);
-    //     network_to_processes_senders.push(network_to_process_sender);
-    //     let mut process = Process::new(i, &counter, network_to_process_receiver, &processes_to_network_sender);
-    //     let executor = process.execute_chan_sender.clone();
-    //     let handle = tokio::spawn(async move {
-    //         process.run().await;
-    //     });
-    //     executors.push(executor);
-    //     threads.push(handle);
-    // }
+    let mut process = Process::new(config.id, &counter, from_network_chan, &to_network_chan);
+    let process_executor = process.execute_chan_sender.clone();
 
-    // let network_task = tokio::spawn(async move {
-    //     // networking
-    //     while let Some(v) = processes_to_network_receiver.recv().await {
-    //         for i in 0..n {
-    //             let sender = network_to_processes_senders[i as usize].clone();
-    //             let v = v.clone();
-    //             tokio::spawn(async move {
-    //                 tokio::time::sleep(std::time::Duration::from_millis((100 * i).into())).await;   // simulate random network delay
-    //                 sender.send(v.clone()).await.expect("oops! the network sender panicked");
-    //             });
-    //         }
-    //     }
-    // });
+    let process_task = tokio::spawn(async move {
+                process.run().await;
+            });
 
-    // let executing_task = tokio::spawn(async move {
-    //     for i in 0..n {
-    //         tokio::time::sleep(std::time::Duration::from_millis((100 * i).into())).await;   // simulate random processor speed
-    //         executors[i as usize].send(Operation::new(0)).await;
-    //     }
-    // });
+    let execute_task = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            let op = Operation::new(0, ());
+            process_executor.send(op).await.unwrap();
+        }
+    });
 
-    // tokio::join!(network_task, executing_task);
+    // TODO: here execute ops
+    tokio::join!(network_task, process_task, execute_task);
 }
