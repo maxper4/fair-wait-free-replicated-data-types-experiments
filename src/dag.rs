@@ -1,6 +1,8 @@
-use std::{collections::HashMap, fmt::{self}};
+use std::{collections::HashMap, fmt::{self, Display}};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct VertexId {
     pub local_id: usize,
     pub process_id: u32
@@ -22,8 +24,8 @@ impl fmt::Display for VertexId {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Vertex<T> where T: Clone{
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Vertex<T> where T: Clone {
     pub id: VertexId,
     pub label: T,
     pub distance: u32
@@ -32,6 +34,13 @@ pub struct Vertex<T> where T: Clone{
 impl <T>Vertex<T> where T: Clone {
     pub fn new(id: VertexId, l: T) -> Vertex<T> {
         Vertex { id, label: l, distance: 0 }
+    }
+}
+
+impl <T>fmt::Display for Vertex<T> where T: Clone {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Vertex: (id: {}, distance: {})", self.id, self.distance)
     }
 }
 
@@ -55,7 +64,7 @@ pub struct Dag<T> where T: Clone {
 }
 
 impl<T> Dag<T> where T: Clone {
-    pub fn new(init: T) -> Dag< T> {
+    pub fn new(init: T) -> Dag<T> {
         Dag {
             vertices: vec![Vertex::new(VertexId::new(0, 0), init)],
             edges: HashMap::new(),

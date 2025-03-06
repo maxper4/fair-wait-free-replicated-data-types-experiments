@@ -1,9 +1,11 @@
-use std::fmt::Debug;
+use core::fmt;
+use std::fmt::{Debug, Display};
 
 use crate::{crdt::{Operation, OperationParameter, VertexLabel, CRDT}, dag::{Vertex, VertexId}};
 use tokio::{select, sync::mpsc::{Receiver, Sender}};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CRDTOperationMessage<P> where P: OperationParameter {
     pub vertex: Vertex<VertexLabel<P>>,
     pub causal_context: Vec<VertexId>,
@@ -16,9 +18,20 @@ impl <P>CRDTOperationMessage<P> where P: OperationParameter {
             causal_context: causal_context
         }
     }
+
+    pub fn to_string(&self) -> String {
+        format!(
+            "CRDTOperationMessage: (vertex: {}, causal_context: {})",
+            self.vertex.to_string(),
+            self.causal_context.iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
 }
 
-pub struct Process<S: Clone, P> where S: Debug, P: OperationParameter {
+pub struct Process<S: Clone+Debug, P> where P: OperationParameter {
     pub id: u32,
     pub crdt: CRDT<S, P>,
     in_chan: Receiver<CRDTOperationMessage<P>>,
@@ -27,7 +40,7 @@ pub struct Process<S: Clone, P> where S: Debug, P: OperationParameter {
     execute_chan_receiver: Receiver<Operation<P>>,
 }
 
-impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
+impl <'a, S: Clone+Debug, P> Process<S, P> where P: OperationParameter {
     pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>, out_chan: &Sender<CRDTOperationMessage<P>>) -> Process<S, P> {
         let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
         Process { 
