@@ -7,11 +7,11 @@ use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, Ver
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + Serialize + 'static {}
+pub trait OperationParameter: Clone + Debug + Send + PartialEq + Eq + Default + Serialize + 'static {}
 
 impl OperationParameter for () {}
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Operation<P> where P: OperationParameter {    
     pub id: usize,
     pub params: P,
@@ -26,7 +26,7 @@ impl <P>Operation<P> where P: OperationParameter {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VertexLabel<P> where P: OperationParameter {
     pub op: Operation<P>,
     pub process_id: u32     // TODO: we store 2 times the process id, one in the vertex id and one here
