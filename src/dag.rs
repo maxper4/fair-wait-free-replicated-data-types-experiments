@@ -1,6 +1,5 @@
-use std::{collections::HashMap, fmt::{self, Display}};
-
-use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fmt::{self}};
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct VertexId {
