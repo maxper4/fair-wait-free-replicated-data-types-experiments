@@ -50,13 +50,7 @@ async fn accept_connections<P>(ip: String, peers_to_local_sender: Sender<CRDTOpe
     }
 }
 
-async fn listen<P>(mut peers_to_local_receiver: Receiver<CRDTOperationMessage<P>>) where P: OperationParameter{
-    while let Some(msg) = peers_to_local_receiver.recv().await {
-        println!("Received: {:?}", msg);
-    }
-}
-
-async fn listen_peer<P>(mut stream: TcpStream, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned{
+async fn listen_peer<P>(mut stream: TcpStream, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned {
     loop {
         let len = stream.read_u64().await.unwrap(); // TODO handle failure
         let mut buf = vec![0; len as usize];
