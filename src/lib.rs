@@ -17,17 +17,13 @@ use dag::{Dag, Vertex, VertexId};
 use config::Config;
 use tokio::sync::mpsc::Sender;
 
-use crate::process::{CRDTOperationMessage, Process};
-
-fn date() -> String {
-    let now = SystemTime::now();
-    let datetime: chrono::DateTime<chrono::Utc> = now.into();
-    datetime.format("%H:%M:%S%.6f").to_string()
-}
+use crate::process::CRDTOperationMessage;
 
 pub async fn run() {
     let config = Config::get("config.toml");
-    let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
+    println!("{:?}", config.peers[0].ip);
+    let (network_chan, network_task): (Sender<CRDTOperationMessage<()>>, tokio::task::JoinHandle<()>) = network::run(config).await;
+    tokio::join!(network_task);
 
     fn mutate_counter(state: &u32, _op: &Operation<()>) -> u32 {
         *state + 1
