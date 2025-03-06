@@ -5,7 +5,7 @@ use crate::{crdt::{Operation, OperationParameter, VertexLabel, CRDT}, dag::{Vert
 use tokio::{select, sync::mpsc::{Receiver, Sender}};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CRDTOperationMessage<P> where P: OperationParameter {
     pub vertex: Vertex<VertexLabel<P>>,
     pub causal_context: Vec<VertexId>,

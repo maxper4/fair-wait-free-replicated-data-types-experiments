@@ -68,7 +68,7 @@ fn basic_set() {
 
 #[test]
 fn basic_set_parameters() {
-    #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     enum ParametersEnum {
         Add(i32),
         Remove(usize)
@@ -144,7 +144,7 @@ fn basic_different_parameters_types() {
         }
     }
 
-    #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     enum ParametersElement {
         Add(i32),
         Concat(String),
