@@ -14,11 +14,14 @@ use crdt::legal_functions::total;
 use dag::{Dag, Vertex, VertexId};
 
 use config::Config;
+use tokio::sync::mpsc::Sender;
+
+use crate::process::CRDTOperationMessage;
 
 pub async fn run() {
     let config = Config::get("config.toml");
     println!("{:?}", config.peers[0].ip);
-    let (network_chan, network_task) = network::run(config).await;
+    let (network_chan, network_task): (Sender<CRDTOperationMessage<()>>, tokio::task::JoinHandle<()>) = network::run(config).await;
     tokio::join!(network_task);
 
     fn mutate_counter(state: &i32, op: &Operation<()>) -> i32 {

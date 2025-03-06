@@ -3,11 +3,13 @@ pub mod legal_functions;
 
 use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, VertexId}, mutate_if_legal, stable_reconciliation};
 
-pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + 'static {}
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + Serialize + 'static {}
 
 impl OperationParameter for () {}
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Operation<P> where P: OperationParameter {    
     pub id: usize,
     pub params: P,
@@ -22,7 +24,7 @@ impl <P>Operation<P> where P: OperationParameter {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct VertexLabel<P> where P: OperationParameter {
     pub op: Operation<P>,
 }
@@ -42,7 +44,7 @@ impl <P>VertexLabel<P> where P: OperationParameter {
 }
 
 #[derive(Clone)]
-pub struct CRDT<S: Clone, P: OperationParameter> {
+pub struct CRDT<S: Clone+Debug, P: OperationParameter> {
     mutate: fn(&S, &Operation<P>) -> S,
     reconciliation: fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S,
     pub dag: Dag<VertexLabel<P>>,
@@ -51,7 +53,7 @@ pub struct CRDT<S: Clone, P: OperationParameter> {
     legality: fn(&S, &Operation<P>) -> bool,
 }
 
-impl <S: Clone, P: OperationParameter> CRDT<S, P> {
+impl <S: Clone+Debug, P: OperationParameter> CRDT<S, P> {
     pub fn new(init: S, mutate: fn(&S, &Operation<P>) -> S, rec: fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S, leg: fn(&S, &Operation<P>) -> bool) -> CRDT<S, P>
     {
         CRDT { 

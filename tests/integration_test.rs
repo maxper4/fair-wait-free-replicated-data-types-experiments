@@ -4,6 +4,7 @@ use crdt::crdt::legal_functions::total;
 use crdt::crdt::{Operation, OperationParameter, CRDT};
 use crdt::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation_no_n};
 use crdt::mutate_if_legal;
+use serde::{Deserialize, Serialize};
 
 #[test]
 fn basic_counter() {
@@ -67,7 +68,7 @@ fn basic_set() {
 
 #[test]
 fn basic_set_parameters() {
-    #[derive(Clone, PartialEq, Eq)]
+    #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
     enum ParametersEnum {
         Add(i32),
         Remove(usize)
@@ -128,7 +129,7 @@ fn basic_set_parameters() {
 
 #[test]
 fn basic_different_parameters_types() {
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     struct Element {
         counter1: i32,
         counter2: String,
@@ -143,7 +144,7 @@ fn basic_different_parameters_types() {
         }
     }
 
-    #[derive(Clone, PartialEq, Eq)]
+    #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
     enum ParametersElement {
         Add(i32),
         Concat(String),

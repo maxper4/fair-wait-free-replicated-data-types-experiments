@@ -1,9 +1,11 @@
-use std::fmt::Debug;
+use core::fmt;
+use std::fmt::{Debug, Display};
 
 use crate::{crdt::{Operation, OperationParameter, VertexLabel, CRDT}, dag::{Vertex, VertexId}};
 use tokio::{select, sync::mpsc::{Receiver, Sender}};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CRDTOperationMessage<P> where P: OperationParameter {
     pub vertex: Vertex<VertexLabel<P>>,
     pub causal_context: Vec<VertexId>,
@@ -16,9 +18,20 @@ impl <P>CRDTOperationMessage<P> where P: OperationParameter {
             causal_context: causal_context
         }
     }
+
+    pub fn to_string(&self) -> String {
+        format!(
+            "CRDTOperationMessage: (vertex: {}, causal_context: {})",
+            self.vertex.to_string(),
+            self.causal_context.iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
 }
 
-pub struct Process<S: Clone, P> where S: Debug, P: OperationParameter {
+pub struct Process<S: Clone+Debug, P> where P: OperationParameter {
     pub id: u32,
     pub crdt: CRDT<S, P>,
     in_chan: Receiver<CRDTOperationMessage<P>>,

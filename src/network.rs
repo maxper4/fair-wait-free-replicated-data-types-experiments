@@ -1,12 +1,18 @@
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{Sender, Receiver};
 
 use crate::config::Config;
+use crate::crdt::OperationParameter;
+use crate::process::CRDTOperationMessage;
 
-pub async fn run(config: Config) -> (Sender<String>, tokio::task::JoinHandle<()>) {
-    let (local_to_peers_sender, local_to_peers_receiver): (Sender<String>, Receiver<String>) = tokio::sync::mpsc::channel(100);
-    let (peers_to_local_sender, peers_to_local_receiver): (Sender<String>, Receiver<String>) = tokio::sync::mpsc::channel(100);
+use bincode;
+
+pub async fn run<P>(config: Config) -> (Sender<CRDTOperationMessage<P>>, tokio::task::JoinHandle<()>) where P:OperationParameter + DeserializeOwned {
+    let (local_to_peers_sender, local_to_peers_receiver): (Sender<CRDTOperationMessage<P>>, Receiver<CRDTOperationMessage<P>>) = tokio::sync::mpsc::channel(100);
+    let (peers_to_local_sender, peers_to_local_receiver): (Sender<CRDTOperationMessage<P>>, Receiver<CRDTOperationMessage<P>>) = tokio::sync::mpsc::channel(100);
 
     let accept_con_taks = tokio::spawn(async move {
         accept_connections(config.ip, peers_to_local_sender).await;
@@ -35,7 +41,7 @@ pub async fn run(config: Config) -> (Sender<String>, tokio::task::JoinHandle<()>
     (local_to_peers_sender, network_task)
 }
 
-async fn accept_connections(ip: String, peers_to_local_sender: Sender<String>) {
+async fn accept_connections<P>(ip: String, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned {
     let listener = TcpListener::bind(ip).await.unwrap();
     loop {
         let (stream, _) = listener.accept().await.unwrap(); // TODO handle failure
@@ -47,28 +53,30 @@ async fn accept_connections(ip: String, peers_to_local_sender: Sender<String>) {
     }
 }
 
-async fn listen(mut peers_to_local_receiver: Receiver<String>) {
+async fn listen<P>(mut peers_to_local_receiver: Receiver<CRDTOperationMessage<P>>) where P: OperationParameter{
     while let Some(msg) = peers_to_local_receiver.recv().await {
-        println!("Received: {}", msg);
+        println!("Received: {}", msg.to_string());
     }
 }
 
-async fn listen_peer(mut stream: TcpStream, peers_to_local_sender: Sender<String>) {
+async fn listen_peer<P>(mut stream: TcpStream, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned{
     loop {
         let len = stream.read_u64().await.unwrap(); // TODO handle failure
         let mut buf = vec![0; len as usize];
-        let n = stream.read(&mut buf).await.unwrap(); // TODO handle failure
-        let msg = String::from_utf8_lossy(&buf[..n]).to_string();
+        stream.read(&mut buf).await.unwrap(); // TODO handle failure, closing
+
+        let msg = bincode::deserialize(&buf).unwrap(); // TODO handle failure
         peers_to_local_sender.send(msg).await.unwrap(); // TODO handle failure
     }
 }
 
-async fn talk(mut local_to_peers_receiver: Receiver<String>, mut out_peers: Vec<TcpStream>) {
+async fn talk<P>(mut local_to_peers_receiver: Receiver<CRDTOperationMessage<P>>, mut out_peers: Vec<TcpStream>) where P: OperationParameter {
     while let Some(msg) = local_to_peers_receiver.recv().await {
+        let bytes = bincode::serialize(&msg).unwrap(); // TODO handle failure
+
         for peer in &mut out_peers {
-            let bytes = msg.as_bytes();
             peer.write_u64(bytes.len() as u64).await.unwrap(); // TODO handle failure
-            peer.write(bytes).await.unwrap(); // TODO handle failure
+            peer.write(&bytes).await.unwrap(); // TODO handle failure
         }
     }
 }

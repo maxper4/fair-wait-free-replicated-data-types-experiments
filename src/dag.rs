@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fmt::{self}, hash::Hash};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct VertexId {
     pub local_id: usize,
     pub process_id: u32
@@ -21,7 +23,7 @@ impl fmt::Display for VertexId {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Vertex<T> where T: Clone {
     pub id: VertexId,
     pub label: T,
