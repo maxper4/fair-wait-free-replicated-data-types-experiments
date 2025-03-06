@@ -1,3 +1,4 @@
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{Sender, Receiver};
 
@@ -7,6 +8,10 @@ pub async fn run(config: Config) -> (Sender<String>, tokio::task::JoinHandle<()>
     let (local_to_peers_sender, local_to_peers_receiver): (Sender<String>, Receiver<String>) = tokio::sync::mpsc::channel(100);
     let (peers_to_local_sender, peers_to_local_receiver): (Sender<String>, Receiver<String>) = tokio::sync::mpsc::channel(100);
 
+    let accept_con_taks = tokio::spawn(async move {
+        accept_connections(config.ip, peers_to_local_sender).await;
+    });
+
     let mut out_peers = vec![];
     for peer in config.peers {  // TODO dynamicly add/remove peers
         let stream = TcpStream::connect(peer.ip).await;    
@@ -15,10 +20,6 @@ pub async fn run(config: Config) -> (Sender<String>, tokio::task::JoinHandle<()>
             Err(_) => println!("Failed to connect to peer"),// TODO handle failure
         }
     }
-
-    let accept_con_taks = tokio::spawn(async move {
-        accept_connections(config.ip, peers_to_local_sender).await;
-    });
 
     let listen_task = tokio::spawn(async move {
         listen(peers_to_local_receiver).await;
@@ -54,20 +55,20 @@ async fn listen(mut peers_to_local_receiver: Receiver<String>) {
 
 async fn listen_peer(mut stream: TcpStream, peers_to_local_sender: Sender<String>) {
     loop {
-        // let mut buf = [0; 1024];
-        // let n = stream.read(&mut buf).await.unwrap(); // TODO handle failure
-        // if n == 0 {
-        //     break;
-        // }
-        // let msg = String::from_utf8_lossy(&buf[..n]).to_string();
-        // peers_to_local_sender.send(msg).await.unwrap(); // TODO handle failure
+        let len = stream.read_u64().await.unwrap(); // TODO handle failure
+        let mut buf = vec![0; len as usize];
+        let n = stream.read(&mut buf).await.unwrap(); // TODO handle failure
+        let msg = String::from_utf8_lossy(&buf[..n]).to_string();
+        peers_to_local_sender.send(msg).await.unwrap(); // TODO handle failure
     }
 }
 
-async fn talk(mut local_to_peers_receiver: Receiver<String>, out_peers: Vec<TcpStream>) {
+async fn talk(mut local_to_peers_receiver: Receiver<String>, mut out_peers: Vec<TcpStream>) {
     while let Some(msg) = local_to_peers_receiver.recv().await {
-        for peer in &out_peers {
-            //peer.write_all(msg.as_bytes()).await.unwrap(); // TODO handle failure
+        for peer in &mut out_peers {
+            let bytes = msg.as_bytes();
+            peer.write_u64(bytes.len() as u64).await.unwrap(); // TODO handle failure
+            peer.write(bytes).await.unwrap(); // TODO handle failure
         }
     }
 }
