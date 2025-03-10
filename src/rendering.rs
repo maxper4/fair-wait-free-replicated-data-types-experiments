@@ -1,4 +1,4 @@
-use std::fs::{self, create_dir_all};
+use std::fs;
 use std::io::Write;
 
 use graphviz_rust::cmd::Format;

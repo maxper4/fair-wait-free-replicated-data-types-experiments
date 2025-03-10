@@ -1,16 +1,16 @@
 use std::fmt::Debug;
 
-use crate::{crdt::{Operation, VertexLabel, CRDT}, dag::{Vertex, VertexId}};
+use crate::{crdt::{Operation, OperationParameter, VertexLabel, CRDT}, dag::{Vertex, VertexId}};
 use tokio::{select, sync::mpsc::{Receiver, Sender}};
 
 #[derive(Clone)]
-pub struct CRDTOperationMessage {
-    pub vertex: Vertex<VertexLabel>,
+pub struct CRDTOperationMessage<P> where P: OperationParameter {
+    pub vertex: Vertex<VertexLabel<P>>,
     pub causal_context: Vec<VertexId>,
 }
 
-impl CRDTOperationMessage {
-    pub fn new(vertex: Vertex<VertexLabel>, causal_context: Vec<VertexId>) -> CRDTOperationMessage {
+impl <P>CRDTOperationMessage<P> where P: OperationParameter {
+    pub fn new(vertex: Vertex<VertexLabel<P>>, causal_context: Vec<VertexId>) -> CRDTOperationMessage<P> {
         CRDTOperationMessage {
             vertex: vertex,
             causal_context: causal_context
@@ -18,17 +18,17 @@ impl CRDTOperationMessage {
     }
 }
 
-pub struct Process<S: Clone, I: Iterator<Item = VertexLabel>> where I:Clone, S: Debug {
+pub struct Process<S: Clone, I: Iterator<Item = VertexLabel<P>>, P> where I:Clone, S: Debug, P: OperationParameter {
     pub id: u32,
-    pub crdt: CRDT<S, I>,
-    in_chan: Receiver<CRDTOperationMessage>,
-    out_chan: Sender<CRDTOperationMessage>,
-    pub execute_chan_sender: Sender<Operation>,
-    execute_chan_receiver: Receiver<Operation>,
+    pub crdt: CRDT<S, I, P>,
+    in_chan: Receiver<CRDTOperationMessage<P>>,
+    out_chan: Sender<CRDTOperationMessage<P>>,
+    pub execute_chan_sender: Sender<Operation<P>>,
+    execute_chan_receiver: Receiver<Operation<P>>,
 }
 
-impl <'a, S: Clone, I: Iterator<Item = VertexLabel>> Process<S, I> where I:Clone, S: Debug {
-    pub fn new(id: u32, crdt: &CRDT<S, I>, in_chan: Receiver<CRDTOperationMessage>, out_chan: &Sender<CRDTOperationMessage>) -> Process<S, I> {
+impl <'a, S: Clone, I: Iterator<Item = VertexLabel<P>>, P> Process<S, I, P> where I:Clone, S: Debug, P: OperationParameter {
+    pub fn new(id: u32, crdt: &CRDT<S, I, P>, in_chan: Receiver<CRDTOperationMessage<P>>, out_chan: &Sender<CRDTOperationMessage<P>>) -> Process<S, I, P> {
         let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
         Process { 
             id: id, 
