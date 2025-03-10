@@ -14,6 +14,7 @@ use crdt::legal_functions::total;
 use dag::{Dag, Vertex, VertexId};
 
 use config::Config;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 
 use crate::process::{CRDTOperationMessage, Process};
@@ -22,9 +23,24 @@ pub async fn run() {
     let config = Config::get("config.toml");
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
 
-    fn mutate_counter(state: &u32, op: &Operation<()>) -> u32 {
-        *state + 1
+    fn mutate_counter(state: &u32, op: &Operation<CounterParameter>) -> u32 {
+        *state + op.params.inc
     }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    struct CounterParameter {
+        inc: u32,
+    }
+
+    impl Default for CounterParameter {
+        fn default() -> Self {
+            CounterParameter {
+                inc: 1,
+            }
+        }
+    }
+
+    impl OperationParameter for CounterParameter {}
 
     let counter = CRDT::new(0, mutate_counter, basic_exploration, total);
     let mut process = Process::new(config.id, &counter, from_network_chan, &to_network_chan);
@@ -38,14 +54,14 @@ pub async fn run() {
         if config.id == 1 {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                let op = Operation::new(0, ());
+                let op = Operation::new(0, CounterParameter { inc: 1 });
                 process_executor.send(op).await.unwrap();
             }
         }
         if config.id == 2 {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                let op = Operation::new(0, ());
+                let op = Operation::new(0, CounterParameter { inc: 10 });
                 process_executor.send(op).await.unwrap();
             }
         }
