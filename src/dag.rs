@@ -64,7 +64,7 @@ impl<T> Dag<T> {
         self.vertices.push(v);
         let v = &self.vertices[self.vertices.len() - 1];
         let parents_len = parents.len();
-        for v2 in parents {
+        for v2 in parents { // TODO: check if the parent exists
             //let e = Edge::new(v, &self.vertices[v2 as usize]);
             let parents = self.edges.get_mut(&v.id);
             match parents {

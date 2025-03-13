@@ -1,3 +1,4 @@
 /target
 /display/*.png
 config.toml
+experiment/*
