@@ -130,3 +130,15 @@ impl<T> Dag<T> {
         heads
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root() {
+        let dag = Dag::new(0);
+        let root = dag.get_root();
+        assert!(root.id == VertexId::new(0, 0));
+    }
+}

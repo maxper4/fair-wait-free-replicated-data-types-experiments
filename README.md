@@ -15,4 +15,4 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 
 ## TODO
 - handle legality
-- translate debug in main to proper tests
+- complete tests
