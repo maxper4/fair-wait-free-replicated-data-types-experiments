@@ -1,16 +1,18 @@
+use std::vec::IntoIter;
+
 use crdt::crdt::{Operation, OperationParameter, CRDT};
 use crdt::crdt::reconciliation_functions::{basic_exploration, handling_conflict};
 
 #[test]
 fn basic_counter() {
-    let mut counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration);
+    let mut counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration, |_,_| true);
 
     counter.apply(Operation::<()>::new(0, ()), 0);
     counter.apply(Operation::<()>::new(0, ()), 0);
     counter.apply(Operation::<()>::new(0, ()), 0);
 
     let result = counter.read();
-    let seq = basic_exploration(&counter.dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = basic_exploration(&counter.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     assert_eq!(result, 3);
     assert_eq!(seq, vec![0, 0, 0, 0]);
 }
@@ -20,13 +22,13 @@ fn basic_set() {
     let add = |mut x: Vec<i32>, _p: ()| { x.push(4); x };
     let remove = |mut x: Vec<i32>, _p: ()| { x.pop(); x };
 
-    let mut set = CRDT::new(vec![1, 2, 3], vec![add, remove], basic_exploration);
+    let mut set = CRDT::new(vec![1, 2, 3], vec![add, remove], basic_exploration, |_,_| true);
     set.apply(Operation::new(1, ()), 0);
     set.apply(Operation::new(1, ()), 0);
     set.apply(Operation::new(0, ()), 0);
 
     let result = set.read();
-    let seq = basic_exploration(&set.dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = basic_exploration(&set.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     assert_eq!(result, vec![1, 4]);
     assert_eq!(seq, vec![0, 1, 1, 0]);
 }
@@ -65,14 +67,14 @@ fn basic_set_parameters() {
         x
     };
 
-    let mut set = CRDT::new(vec![], vec![add, remove], basic_exploration);
+    let mut set = CRDT::new(vec![], vec![add, remove], basic_exploration, |_,_| true);
     set.apply(Operation::new(0, ParametersEnum::Add(3)), 0);
     set.apply(Operation::new(0, ParametersEnum::Add(4)), 0);
     set.apply(Operation::new(0, ParametersEnum::Add(5)), 0);
     set.apply(Operation::new(1, ParametersEnum::Remove(2)), 0);
 
     let res = set.read();
-    let seq = basic_exploration(&set.dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = basic_exploration(&set.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     assert_eq!(seq, vec![0, 0, 0, 0, 1]);
     assert_eq!(res, vec![3]);
 }
@@ -123,7 +125,7 @@ fn basic_different_parameters_types() {
         x
      };
 
-    let mut on_element = CRDT::new(Element::new(), vec![add, concat], basic_exploration);
+    let mut on_element = CRDT::new(Element::new(), vec![add, concat], basic_exploration, |_,_| true);
     on_element.apply(Operation::new(0, ParametersElement::Add(3)), 0);
     on_element.apply(Operation::new(0, ParametersElement::Add(2)), 0);
     on_element.apply(Operation::new(1, ParametersElement::Concat(String::from("hello"))), 0);
@@ -132,4 +134,20 @@ fn basic_different_parameters_types() {
     let result = on_element.read();
     assert_eq!(result.counter1, 5);
     assert_eq!(result.counter2, String::from("hello world"));
+}
+
+#[test]
+fn bounded_counter() {
+    let leg: fn(&IntoIter<_>, &Operation<()>) -> bool = |seq, _| seq.len() < 3;
+
+    let mut bounded_counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration, leg);
+
+    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
+    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
+    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
+    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
+    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
+
+    let result = bounded_counter.read();
+    assert_eq!(result, 2);
 }

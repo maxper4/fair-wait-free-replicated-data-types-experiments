@@ -11,26 +11,37 @@ use dag::{Dag, Vertex, VertexId};
 
 
 pub async fn run() {
-   let mut counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration);
+   let mut counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration, |_, _| true);
 
     counter.apply(Operation::<()>::new(0, ()), 0);
     counter.apply(Operation::<()>::new(0, ()), 0);
     counter.apply(Operation::<()>::new(0, ()), 0);
 
     let result = counter.read();
-    let seq = basic_exploration(&counter.dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = basic_exploration(&counter.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Counter {:?} = {}", seq, result);
+
+    let mut clamped_counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration, |seq, _| seq.len() < 3);
+
+    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
+    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
+    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
+    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
+
+    let result = clamped_counter.read();
+    let seq = basic_exploration(&clamped_counter.dag, |seq, _| seq.len() < 3).map(|x| x.op.id).collect::<Vec<usize>>();
+    println!("Clamped counter {:?} = {}", seq, result);
 
     let add = |mut x: Vec<i32>, _p: ()| { x.push(4); x };
     let remove = |mut x: Vec<i32>, _p: ()| { x.pop(); x };
 
-    let mut set = CRDT::new(vec![1, 2, 3], vec![add, remove], basic_exploration);
+    let mut set = CRDT::new(vec![1, 2, 3], vec![add, remove], basic_exploration, |_,_| true);
     set.apply(Operation::new(1, ()), 0);
     set.apply(Operation::new(1, ()), 0);
     set.apply(Operation::new(0, ()), 0);
 
     let result = set.read();
-    let seq = basic_exploration(&set.dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = basic_exploration(&set.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Set {:?} = {:?}", seq, result);
 
     
@@ -50,7 +61,7 @@ pub async fn run() {
     concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(0, (), 0))); 
     concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(1, (), 0)));   // 4 concurrent, [1, 1] wins
     
-    let seq = add_remove_reconciliation(&concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = add_remove_reconciliation(&concurrent_set_dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Concurrent Set {:?}", seq);
 
     let onlyconflict = vec![
@@ -77,7 +88,7 @@ pub async fn run() {
     fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(16, 0), VertexLabel::new(0, (), 1))); 
     fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins
     let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
-    let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Fair concurrent Set {:?}", seq);  // should be [0, 1, 0, 1, 1, 1, 1]
 
 
@@ -113,14 +124,14 @@ pub async fn run() {
         x
      };
 
-    let mut set = CRDT::new(vec![], vec![add, remove], basic_exploration);
+    let mut set = CRDT::new(vec![], vec![add, remove], basic_exploration, |_,_| true);
     set.apply(Operation::new(0, ParametersEnum::Add(3)), 0);
     set.apply(Operation::new(0, ParametersEnum::Add(4)), 0);
     set.apply(Operation::new(0, ParametersEnum::Add(5)), 0);
     set.apply(Operation::new(1, ParametersEnum::Remove(2)), 0);
 
     let result = set.read();
-    let seq = basic_exploration(&set.dag).map(|x| x.op.id).collect::<Vec<usize>>();
+    let seq = basic_exploration(&set.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
     println!("Set {:?} = {:?}", seq, result);
 
     #[derive(Clone, Debug)]
@@ -167,7 +178,7 @@ pub async fn run() {
         x
      };
 
-    let mut on_element = CRDT::new(Element::new(), vec![add, concat], basic_exploration);
+    let mut on_element = CRDT::new(Element::new(), vec![add, concat], basic_exploration, |_,_| true);
     on_element.apply(Operation::new(0, ParametersElement::Add(3)), 0);
     on_element.apply(Operation::new(0, ParametersElement::Add(2)), 0);
     on_element.apply(Operation::new(1, ParametersElement::Concat(String::from("hello"))), 0);

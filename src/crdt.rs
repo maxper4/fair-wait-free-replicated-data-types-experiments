@@ -1,6 +1,7 @@
 pub mod reconciliation_functions;
 
 use crate::dag::{Dag, Vertex, VertexId};
+use std::vec::IntoIter;
 
 
 pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + 'static {}
@@ -47,20 +48,22 @@ impl <P>VertexLabel<P> where P: OperationParameter {
 #[derive(Clone)]
 pub struct CRDT<S: Clone, I: Iterator<Item = VertexLabel<P>> + Clone, P: OperationParameter> {
     operations: Vec<fn(S, P) -> S>,
-    reconciliation: fn(&Dag<VertexLabel<P>>) -> I,
+    reconciliation: fn(&Dag<VertexLabel<P>>, fn(&IntoIter<VertexLabel<P>>, &Operation<P>) -> bool) -> I,
     pub dag: Dag<VertexLabel<P>>,
     initial_state: S,
     local_id: usize,
+    legality: fn(&IntoIter<VertexLabel<P>>, &Operation<P>) -> bool,
 }
 
 impl <S: Clone, I: Iterator<Item = VertexLabel<P>> + Clone, P: OperationParameter> CRDT<S, I, P> {
-    pub fn new(init: S, ops: Vec<fn(S, P) -> S>, rec: fn(&Dag<VertexLabel<P>>) -> I) -> CRDT<S, I, P> {
+    pub fn new(init: S, ops: Vec<fn(S, P) -> S>, rec: fn(&Dag<VertexLabel<P>>, fn(&IntoIter<VertexLabel<P>>, &Operation<P>) -> bool) -> I, leg: fn(&IntoIter<VertexLabel<P>>, &Operation<P>) -> bool) -> CRDT<S, I, P> {
         CRDT { 
             operations: ops, 
             dag: Dag::new(VertexLabel::new(0, P::default(), 0)),    // No process should have id 0
             reconciliation: rec,
             initial_state: init,
             local_id: 1,
+            legality: leg,
         }
     }
 
@@ -80,7 +83,7 @@ impl <S: Clone, I: Iterator<Item = VertexLabel<P>> + Clone, P: OperationParamete
 
     pub fn read(&self) -> S {
         let mut state = self.initial_state.clone();
-        let mut seq = (self.reconciliation)(&self.dag);
+        let mut seq = (self.reconciliation)(&self.dag, self.legality);
         seq.next(); // skip the root
         for v in seq {     
             state = (self.operations[v.op.id])(state, v.op.params.clone());
@@ -113,8 +116,32 @@ mod tests {
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(0, (), 0))); 
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(1, (), 0)));   // 4 concurrent, [1, 1] wins
         
-        let seq = add_remove_reconciliation(&concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
+        let seq = add_remove_reconciliation(&concurrent_set_dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
         assert_eq!(seq, vec![0, 1, 1, 1]);
+    }   
+
+    #[test]
+    fn concurrent_bounded_set() {
+        // remove wins (1)
+        let add_remove_order = vec![
+            vec![None, Some(1)],
+            vec![Some(1), None]
+        ];
+        let add_remove_reconciliation = handling_conflict(add_remove_order);
+        let leg: fn(&IntoIter<_>, &Operation<()>) -> bool = |seq, _| seq.len() < 3;
+
+        // adding concurrency for debugging
+        let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
+        concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 0)));  // no concurrent, 0 stays
+        concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, (), 0)));
+        concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 0)));  // concurrent, 1 wins
+        concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(0, (), 0)));
+        concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(1, (), 0)));
+        concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(0, (), 0))); 
+        concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(1, (), 0)));   // 4 concurrent, [1, 1] wins
+        
+        let seq = add_remove_reconciliation(&concurrent_set_dag, leg).map(|x| x.op.id).collect::<Vec<usize>>();
+        assert_eq!(seq, vec![0, 1, 1]);
     }   
 
     #[test]
@@ -143,7 +170,38 @@ mod tests {
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(16, 0), VertexLabel::new(0, (), 1))); 
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins
         let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
-        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag).map(|x| x.op.id).collect::<Vec<usize>>();
+        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
         assert_eq!(seq, vec![0, 1, 0, 1, 1, 1, 1]);
+    }
+
+    #[test]
+    fn fair_bounded_set() {
+        let onlyconflict = vec![
+            vec![true, true],
+            vec![true, true]
+        ];
+        let leg: fn(&IntoIter<_>, &Operation<()>) -> bool = |seq, _| seq.len() < 4;
+        
+        let mut fair_concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
+        fair_concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 1)));  // no concurrent, 0 stays
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, (), 2)));
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 1)));  // concurrent, 1 wins (id higher)
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(1, (), 2))); //p2 is rollbacked => score of 1
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(0, (), 1))); // concurrent, 0 wins (score higher)
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(1, (), 2)));
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(0, (), 1))); 
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(8, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins (score higher)  (p1:1, p3:1) 
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(9, 0), VertexLabel::new(0, (), 2)));
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(10, 0), VertexLabel::new(0, (), 1))); 
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(11, 0), VertexLabel::new(1, (), 3))); // 3 concurrent, 1 (p3) wins (p1: 2, p2: 1, p3:0)
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(12, 0), VertexLabel::new(0, (), 2)));
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(13, 0), VertexLabel::new(1, (), 1))); 
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(14, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p1) wins (p1: 0, p2: 2, p3: 1)
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(15, 0), VertexLabel::new(1, (), 2)));
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(16, 0), VertexLabel::new(0, (), 1))); 
+        fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins
+        let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
+        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, leg).map(|x| x.op.id).collect::<Vec<usize>>();
+        assert_eq!(seq, vec![0, 1, 0, 1]);
     }
 }
