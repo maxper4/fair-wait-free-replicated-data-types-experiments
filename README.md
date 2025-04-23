@@ -14,6 +14,5 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 
 
 ## TODO
-- compute state directly in reconciliation functions
 - dont rollback conflicting op just order them
 - complete tests

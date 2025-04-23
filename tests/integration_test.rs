@@ -5,32 +5,62 @@ use crdt::crdt::reconciliation_functions::{basic_exploration, handling_conflict}
 
 #[test]
 fn basic_counter() {
-    let mut counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration, |_,_| true);
+    fn mutate_counter(state: &u32, op: &Operation<()>) -> u32 {
+        *state + 1
+    }
+    
+   let mut counter = CRDT::new(0, mutate_counter, basic_exploration, |_, _| true);
 
     counter.apply(Operation::<()>::new(0, ()), 0);
     counter.apply(Operation::<()>::new(0, ()), 0);
     counter.apply(Operation::<()>::new(0, ()), 0);
 
     let result = counter.read();
-    let seq = basic_exploration(&counter.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
+
+    fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
+        let mut state = state.clone();
+        state.push(op.id);
+        state
+    }
+
+    let seq = basic_exploration(&counter.dag, &vec![], mutate_debug, |_, _| true);
+
     assert_eq!(result, 3);
-    assert_eq!(seq, vec![0, 0, 0, 0]);
+    assert_eq!(seq, vec![0, 0, 0]);
 }
 
 #[test]
 fn basic_set() {
-    let add = |mut x: Vec<i32>, _p: ()| { x.push(4); x };
-    let remove = |mut x: Vec<i32>, _p: ()| { x.pop(); x };
+    fn mutate_set(state: &Vec<i32>, op: &Operation<()>) -> Vec<i32> {
+        let mut state = state.clone();
+        match op.id {
+            0 => {
+                state.push(4); state
+            },
+            1  => {
+                state.pop(); state
+            }, 
+            _ => state
+        }
+    }
 
-    let mut set = CRDT::new(vec![1, 2, 3], vec![add, remove], basic_exploration, |_,_| true);
+    let mut set = CRDT::new(vec![1, 2, 3], mutate_set, basic_exploration, |_,_| true);
+    
     set.apply(Operation::new(1, ()), 0);
     set.apply(Operation::new(1, ()), 0);
     set.apply(Operation::new(0, ()), 0);
 
     let result = set.read();
-    let seq = basic_exploration(&set.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
+
+    fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
+        let mut state = state.clone();
+        state.push(op.id);
+        state
+    }
+
+    let seq = basic_exploration(&set.dag, &vec![], mutate_debug, |_,_| true);
     assert_eq!(result, vec![1, 4]);
-    assert_eq!(seq, vec![0, 1, 1, 0]);
+    assert_eq!(seq, vec![1, 1, 0]);
 }
 
 #[test]
@@ -48,34 +78,49 @@ fn basic_set_parameters() {
     }
     impl OperationParameter for ParametersEnum {}
 
-    let add = |mut x: Vec<i32>, params: ParametersEnum| { 
-        let to_add = match params {
-            ParametersEnum::Add(v) => v,
-            ParametersEnum::Remove(_) => 0
-        };
-        x.push(to_add);
-        x
-    };
-    let remove = |mut x: Vec<i32>, params: ParametersEnum| { 
-        let nb_to_remove = match params {
-            ParametersEnum::Add(_) => 0,
-            ParametersEnum::Remove(v) => v
-        };
-        for _ in 0..nb_to_remove {
-            x.pop();
+    fn mutate_set_params(state: &Vec<i32>, op: &Operation<ParametersEnum>) -> Vec<i32> {
+        let mut state = state.clone();
+        match op.id {
+            0 => {
+                let to_add = match op.params {
+                    ParametersEnum::Add(v) => v,
+                    ParametersEnum::Remove(_) => 0
+                };
+                state.push(to_add);
+            },
+            1  => {
+                let nb_to_remove = match op.params {
+                    ParametersEnum::Add(_) => 0,
+                    ParametersEnum::Remove(v) => v
+                };
+                for _ in 0..nb_to_remove {
+                    state.pop();
+                }
+            }, 
+            _ => ()
         }
-        x
-    };
+        state
+    }
 
-    let mut set = CRDT::new(vec![], vec![add, remove], basic_exploration, |_,_| true);
+
+    let mut set = CRDT::new(vec![], mutate_set_params, basic_exploration, |_,_| true);
+
     set.apply(Operation::new(0, ParametersEnum::Add(3)), 0);
     set.apply(Operation::new(0, ParametersEnum::Add(4)), 0);
     set.apply(Operation::new(0, ParametersEnum::Add(5)), 0);
     set.apply(Operation::new(1, ParametersEnum::Remove(2)), 0);
 
     let res = set.read();
-    let seq = basic_exploration(&set.dag, |_,_| true).map(|x| x.op.id).collect::<Vec<usize>>();
-    assert_eq!(seq, vec![0, 0, 0, 0, 1]);
+
+    fn mutate_debug(state: &Vec<usize>, op: &Operation<ParametersEnum>) -> Vec<usize> {
+        let mut state = state.clone();
+        state.push(op.id);
+        state
+    }
+
+    let seq = basic_exploration(&set.dag, &vec![], mutate_debug, |_,_| true);
+
+    assert_eq!(seq, vec![0, 0, 0, 1]);
     assert_eq!(res, vec![3]);
 }
 
@@ -110,22 +155,28 @@ fn basic_different_parameters_types() {
 
     impl OperationParameter for ParametersElement {}
 
-    let add = |mut x: Element, params: ParametersElement| { 
-        match params {
-            ParametersElement::Add(v) => {x.counter1 += v;},
-            ParametersElement::Concat(_) => {},
-        };
-        x
-     };
-    let concat = |mut x: Element, params: ParametersElement| { 
-        match &params {
-            ParametersElement::Add(_) => {},
-            ParametersElement::Concat(s) => { x.counter2 = x.counter2 + &s; },
-        };
-        x
-     };
+    fn mutate_set_elements(state: &Element, op: &Operation<ParametersElement>) -> Element {
+        let mut state = state.clone();
+        match op.id {
+            0 => {
+                match op.params {
+                    ParametersElement::Add(v) => {state.counter1 += v; },
+                    _ => (),
+                };
+            },
+            1  => {
+                match &op.params {
+                    ParametersElement::Concat(s) => { state.counter2 = state.counter2 + &s; },
+                    _ => (),
+                };
+            }, 
+            _ => ()
+        }
+        state
+    }
 
-    let mut on_element = CRDT::new(Element::new(), vec![add, concat], basic_exploration, |_,_| true);
+    let mut on_element = CRDT::new(Element::new(), mutate_set_elements, basic_exploration, |_,_| true);
+
     on_element.apply(Operation::new(0, ParametersElement::Add(3)), 0);
     on_element.apply(Operation::new(0, ParametersElement::Add(2)), 0);
     on_element.apply(Operation::new(1, ParametersElement::Concat(String::from("hello"))), 0);
@@ -138,9 +189,13 @@ fn basic_different_parameters_types() {
 
 #[test]
 fn bounded_counter() {
-    let leg: fn(&IntoIter<_>, &Operation<()>) -> bool = |seq, _| seq.len() < 3;
+    fn mutate_counter(state: &u32, op: &Operation<()>) -> u32 {
+        *state + 1
+    }
 
-    let mut bounded_counter = CRDT::new(0, vec![|x, _p| x + 1], basic_exploration, leg);
+    let leg: fn(&u32, &Operation<()>) -> bool = |c, _| *c < 2;
+
+    let mut bounded_counter = CRDT::new(0, mutate_counter, basic_exploration, leg);
 
     bounded_counter.apply(Operation::<()>::new(0, ()), 0);
     bounded_counter.apply(Operation::<()>::new(0, ()), 0);
