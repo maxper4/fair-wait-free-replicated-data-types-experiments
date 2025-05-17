@@ -14,5 +14,6 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 
 
 ## TODO
-- dont rollback conflicting op just order them
+- dont rollback conflicting op just order them and output bot
+- new algo fairness and append
 - complete tests
