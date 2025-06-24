@@ -4,7 +4,7 @@ use crate::dag::{Dag, Vertex, VertexId};
 use std::vec::IntoIter;
 use std::collections::HashMap;
 
-pub fn basic_exploration<P, S>(dag: &Dag<VertexLabel<P>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S, legality: fn(&S, &Operation<P>) -> bool) -> S  // works when there is no conflict
+pub fn basic_exploration<P, S>(dag: &Dag<VertexLabel<P>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S) -> S  // works when there is no conflict
 where P: OperationParameter, S: Clone {
     let mut toexplore: Vec<VertexId> = dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
     let mut state = initial_state.clone();
@@ -14,9 +14,7 @@ where P: OperationParameter, S: Clone {
         let head = toexplore.pop().unwrap();
         let v: &Vertex<_> = dag.get_vertex(head).unwrap();
 
-        if legality(&state, &v.label.op) {
-            state = mutate(&state, &v.label.op);
-        }
+        state = mutate(&state, &v.label.op);
 
         for c in dag.get_edges_to_vertex(head) {
             if !children.contains(&c.id) {
@@ -31,9 +29,9 @@ where P: OperationParameter, S: Clone {
     state
 }
 
-pub fn handling_conflict<P, S>(op_order: Vec<Vec<Option<usize>>>) -> impl Fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S, fn(&S, &Operation<P>) -> bool) -> S
+pub fn handling_conflict<P, S>(op_order: Vec<Vec<Option<usize>>>) -> impl Fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S
  where P: OperationParameter, S: Clone { 
-    move |dag: &Dag<VertexLabel<_>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S, legality: fn(&S, &Operation<P>) -> bool| {    // works when there is conflict, returns a function given an order
+    move |dag: &Dag<VertexLabel<_>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S| {    // works when there is conflict, returns a function given an order
     let mut toexplore: Vec<VertexId> = dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
     let mut state = initial_state.clone();
     let mut children = vec![];
@@ -51,9 +49,6 @@ pub fn handling_conflict<P, S>(op_order: Vec<Vec<Option<usize>>>) -> impl Fn(&Da
             let mut next_children: Vec<&Vertex<VertexLabel<_>>> = children.clone().into_iter().map(|c| dag.get_vertex(c).unwrap()).collect::<Vec<_>>();
             children.clear();
 
-            next_children = next_children.into_iter().filter(
-                |v: &&Vertex<VertexLabel<_>>| legality(&state, &v.label.op)  // check legality
-            ).collect::<Vec<_>>();
             next_children.sort_by(|x: &&Vertex<VertexLabel<_>>, y: &&Vertex<VertexLabel<_>> | x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
             
             while next_children.len() > 0 {    // take concurrent operations 2 by 2 and check conflicts
@@ -78,26 +73,22 @@ pub fn handling_conflict<P, S>(op_order: Vec<Vec<Option<usize>>>) -> impl Fn(&Da
                 }
                 
                 // clean loosers
-                for v in toremove.into_iter() {
+                for v in toremove.into_iter() { // TODO: don't remove just order
                     next_children.retain(|x: &&Vertex<VertexLabel<_>>| x.id != v.id);
                 }
 
                 if !conflicted {    // if no conflict with the whole set of concurrent operations, add in the order
                     state = mutate(&state, &v1.label.op);
                 }
-
-                next_children = next_children.into_iter().filter(
-                    |v: &&Vertex<VertexLabel<_>>| legality(&state, &v.label.op)  // check legality
-                ).collect::<Vec<_>>();
             }
         }
     }
     state
 }}
 
-pub fn fair_reconciliation<P, S>(op_conflicts: Vec<Vec<bool>>) -> impl Fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S, fn(&S, &Operation<P>) -> bool) -> S
-where P: OperationParameter, S: Clone { 
-    move |dag: &Dag<VertexLabel<_>>,initial_state: &S, mutate: fn(&S, &Operation<P>) -> S, legality: fn(&S, &Operation<P>) -> bool| {    // reconciliation is based on process fairness rather than semantically
+pub fn fair_reconciliation<P, S>(op_conflicts: Vec<Vec<bool>>) -> impl Fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S
+where P: OperationParameter, S: Clone { // TODO: new fairness
+    move |dag: &Dag<VertexLabel<_>>,initial_state: &S, mutate: fn(&S, &Operation<P>) -> S| {    // reconciliation is based on process fairness rather than semantically
     let mut toexplore: Vec<VertexId> = dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
     let mut state = initial_state.clone();
     let mut children = vec![];
@@ -116,9 +107,6 @@ where P: OperationParameter, S: Clone {
             children.clear();
 
             next_children.sort_by(|x: &&Vertex<VertexLabel<_>>, y: &&Vertex<VertexLabel<_>> | x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
-            next_children = next_children.into_iter().filter(
-                |v: &&Vertex<VertexLabel<_>>| legality(&state, &v.label.op)  // check legality
-            ).collect::<Vec<_>>();
 
             let mut winners: Vec<&Vertex<VertexLabel<_>>>  = vec![];
             let mut loosers: Vec<&Vertex<VertexLabel<_>>> = vec![];
@@ -156,10 +144,6 @@ where P: OperationParameter, S: Clone {
                     winners.push(v1);
                     state = mutate(&state, &v1.label.op);
                 }
-
-                next_children = next_children.into_iter().filter(
-                    |v: &&Vertex<VertexLabel<_>>| legality(&state, &v.label.op)  // check legality
-                ).collect::<Vec<_>>();
             }
 
             for v in winners {

@@ -7,6 +7,7 @@ use std::vec;
 
 use crdt::{Operation, OperationParameter, VertexLabel, CRDT};
 use crdt::reconciliation_functions::{basic_exploration, handling_conflict, fair_reconciliation};
+use crdt::legal_functions::total;
 use dag::{Dag, Vertex, VertexId};
 
 
@@ -15,21 +16,36 @@ pub async fn run() {
         *state + 1
     }
     
-   let mut counter = CRDT::new(0, mutate_counter, basic_exploration, |_, _| true);
+   let mut counter = CRDT::new(0, mutate_counter, basic_exploration, total);
 
-    counter.apply(Operation::<()>::new(0, ()), 0);
-    counter.apply(Operation::<()>::new(0, ()), 0);
-    counter.apply(Operation::<()>::new(0, ()), 0);
+    counter.append(Operation::<()>::new(0, ()), 0);
+    counter.append(Operation::<()>::new(0, ()), 0);
+    counter.append(Operation::<()>::new(0, ()), 0);
 
     let result = counter.read();
     println!("Counter = {:?}", result);
 
-    let mut clamped_counter = CRDT::new(0, mutate_counter, basic_exploration, |c, _| *c < 3);
+    fn leg(state: &u32, op: &Operation<()>) -> bool {
+        if *state < 3 {
+            true
+        } else {
+            false
+        }
+    }
 
-    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
-    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
-    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
-    clamped_counter.apply(Operation::<()>::new(0, ()), 0);
+    fn mutate_clamped_counter(state: &u32, op: &Operation<()>) -> u32 {
+        if leg(state, op) {
+            *state + 1
+        } else {
+            *state
+        }
+    }
+    let mut clamped_counter = CRDT::new(0, mutate_clamped_counter, basic_exploration, leg);
+
+    clamped_counter.append(Operation::<()>::new(0, ()), 0);
+    clamped_counter.append(Operation::<()>::new(0, ()), 0);
+    clamped_counter.append(Operation::<()>::new(0, ()), 0);
+    clamped_counter.append(Operation::<()>::new(0, ()), 0);
 
     let result = clamped_counter.read();
     println!("Clamped counter = {:?}", result);
@@ -47,10 +63,10 @@ pub async fn run() {
         }
     }
 
-    let mut set = CRDT::new(vec![1, 2, 3], mutate_set, basic_exploration, |_,_| true);
-    set.apply(Operation::new(1, ()), 0);
-    set.apply(Operation::new(1, ()), 0);
-    set.apply(Operation::new(0, ()), 0);
+    let mut set = CRDT::new(vec![1, 2, 3], mutate_set, basic_exploration, total);
+    set.append(Operation::new(1, ()), 0);
+    set.append(Operation::new(1, ()), 0);
+    set.append(Operation::new(0, ()), 0);
 
     let result = set.read();
     println!("Set = {:?}", result);
@@ -78,7 +94,7 @@ pub async fn run() {
         state
     }
 
-    let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug, |_,_| true);
+    let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug);
     println!("Concurrent Set {:?}", seq);
 
     let onlyconflict = vec![
@@ -106,7 +122,7 @@ pub async fn run() {
     fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins
     let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
 
-    let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug, |_,_| true);
+    let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug);
     println!("Fair concurrent Set {:?}", seq);  // should be [0, 1, 0, 1, 1, 1, 1]
 
 
@@ -148,11 +164,11 @@ pub async fn run() {
     }
 
 
-    let mut set = CRDT::new(vec![], mutate_set_params, basic_exploration, |_,_| true);
-    set.apply(Operation::new(0, ParametersEnum::Add(3)), 0);
-    set.apply(Operation::new(0, ParametersEnum::Add(4)), 0);
-    set.apply(Operation::new(0, ParametersEnum::Add(5)), 0);
-    set.apply(Operation::new(1, ParametersEnum::Remove(2)), 0);
+    let mut set = CRDT::new(vec![], mutate_set_params, basic_exploration, total);
+    set.append(Operation::new(0, ParametersEnum::Add(3)), 0);
+    set.append(Operation::new(0, ParametersEnum::Add(4)), 0);
+    set.append(Operation::new(0, ParametersEnum::Add(5)), 0);
+    set.append(Operation::new(1, ParametersEnum::Remove(2)), 0);
 
     let result = set.read();
     println!("Set = {:?}", result);
@@ -206,11 +222,11 @@ pub async fn run() {
         state
     }
 
-    let mut on_element = CRDT::new(Element::new(), mutate_set_elements, basic_exploration, |_,_| true);
-    on_element.apply(Operation::new(0, ParametersElement::Add(3)), 0);
-    on_element.apply(Operation::new(0, ParametersElement::Add(2)), 0);
-    on_element.apply(Operation::new(1, ParametersElement::Concat(String::from("hello"))), 0);
-    on_element.apply(Operation::new(1, ParametersElement::Concat(String::from(" world"))), 0);
+    let mut on_element = CRDT::new(Element::new(), mutate_set_elements, basic_exploration, total);
+    on_element.append(Operation::new(0, ParametersElement::Add(3)), 0);
+    on_element.append(Operation::new(0, ParametersElement::Add(2)), 0);
+    on_element.append(Operation::new(1, ParametersElement::Concat(String::from("hello"))), 0);
+    on_element.append(Operation::new(1, ParametersElement::Concat(String::from(" world"))), 0);
 
     let result = on_element.read();
     println!("{:?}", result);

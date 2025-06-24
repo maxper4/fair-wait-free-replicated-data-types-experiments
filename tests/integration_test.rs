@@ -1,7 +1,9 @@
 use std::vec::IntoIter;
 
+use crdt::crdt::legal_functions::total;
 use crdt::crdt::{Operation, OperationParameter, CRDT};
-use crdt::crdt::reconciliation_functions::{basic_exploration, handling_conflict};
+use crdt::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation, handling_conflict};
+use crdt::mutate_if_legal;
 
 #[test]
 fn basic_counter() {
@@ -9,11 +11,11 @@ fn basic_counter() {
         *state + 1
     }
     
-   let mut counter = CRDT::new(0, mutate_counter, basic_exploration, |_, _| true);
+   let mut counter = CRDT::new(0, mutate_counter, basic_exploration, total);
 
-    counter.apply(Operation::<()>::new(0, ()), 0);
-    counter.apply(Operation::<()>::new(0, ()), 0);
-    counter.apply(Operation::<()>::new(0, ()), 0);
+    counter.append(Operation::<()>::new(0, ()), 0);
+    counter.append(Operation::<()>::new(0, ()), 0);
+    counter.append(Operation::<()>::new(0, ()), 0);
 
     let result = counter.read();
 
@@ -23,7 +25,7 @@ fn basic_counter() {
         state
     }
 
-    let seq = basic_exploration(&counter.dag, &vec![], mutate_debug, |_, _| true);
+    let seq = basic_exploration(&counter.dag, &vec![], mutate_debug);
 
     assert_eq!(result, 3);
     assert_eq!(seq, vec![0, 0, 0]);
@@ -44,11 +46,11 @@ fn basic_set() {
         }
     }
 
-    let mut set = CRDT::new(vec![1, 2, 3], mutate_set, basic_exploration, |_,_| true);
+    let mut set = CRDT::new(vec![1, 2, 3], mutate_set, basic_exploration, total);
     
-    set.apply(Operation::new(1, ()), 0);
-    set.apply(Operation::new(1, ()), 0);
-    set.apply(Operation::new(0, ()), 0);
+    set.append(Operation::new(1, ()), 0);
+    set.append(Operation::new(1, ()), 0);
+    set.append(Operation::new(0, ()), 0);
 
     let result = set.read();
 
@@ -58,7 +60,7 @@ fn basic_set() {
         state
     }
 
-    let seq = basic_exploration(&set.dag, &vec![], mutate_debug, |_,_| true);
+    let seq = basic_exploration(&set.dag, &vec![], mutate_debug);
     assert_eq!(result, vec![1, 4]);
     assert_eq!(seq, vec![1, 1, 0]);
 }
@@ -103,12 +105,12 @@ fn basic_set_parameters() {
     }
 
 
-    let mut set = CRDT::new(vec![], mutate_set_params, basic_exploration, |_,_| true);
+    let mut set = CRDT::new(vec![], mutate_set_params, basic_exploration, total);
 
-    set.apply(Operation::new(0, ParametersEnum::Add(3)), 0);
-    set.apply(Operation::new(0, ParametersEnum::Add(4)), 0);
-    set.apply(Operation::new(0, ParametersEnum::Add(5)), 0);
-    set.apply(Operation::new(1, ParametersEnum::Remove(2)), 0);
+    set.append(Operation::new(0, ParametersEnum::Add(3)), 0);
+    set.append(Operation::new(0, ParametersEnum::Add(4)), 0);
+    set.append(Operation::new(0, ParametersEnum::Add(5)), 0);
+    set.append(Operation::new(1, ParametersEnum::Remove(2)), 0);
 
     let res = set.read();
 
@@ -118,7 +120,7 @@ fn basic_set_parameters() {
         state
     }
 
-    let seq = basic_exploration(&set.dag, &vec![], mutate_debug, |_,_| true);
+    let seq = basic_exploration(&set.dag, &vec![], mutate_debug);
 
     assert_eq!(seq, vec![0, 0, 0, 1]);
     assert_eq!(res, vec![3]);
@@ -175,12 +177,12 @@ fn basic_different_parameters_types() {
         state
     }
 
-    let mut on_element = CRDT::new(Element::new(), mutate_set_elements, basic_exploration, |_,_| true);
+    let mut on_element = CRDT::new(Element::new(), mutate_set_elements, basic_exploration, total);
 
-    on_element.apply(Operation::new(0, ParametersElement::Add(3)), 0);
-    on_element.apply(Operation::new(0, ParametersElement::Add(2)), 0);
-    on_element.apply(Operation::new(1, ParametersElement::Concat(String::from("hello"))), 0);
-    on_element.apply(Operation::new(1, ParametersElement::Concat(String::from(" world"))), 0);
+    on_element.append(Operation::new(0, ParametersElement::Add(3)), 0);
+    on_element.append(Operation::new(0, ParametersElement::Add(2)), 0);
+    on_element.append(Operation::new(1, ParametersElement::Concat(String::from("hello"))), 0);
+    on_element.append(Operation::new(1, ParametersElement::Concat(String::from(" world"))), 0);
 
     let result = on_element.read();
     assert_eq!(result.counter1, 5);
@@ -189,19 +191,23 @@ fn basic_different_parameters_types() {
 
 #[test]
 fn bounded_counter() {
-    fn mutate_counter(state: &u32, op: &Operation<()>) -> u32 {
+    fn leg(state: &u32, op: &Operation<()>) -> bool {
+        *state < 2
+    }
+
+    fn increment(state: &u32, op: &Operation<()>) -> u32 {
         *state + 1
     }
 
-    let leg: fn(&u32, &Operation<()>) -> bool = |c, _| *c < 2;
+    mutate_if_legal!(u32, (), mutate_counter, increment, leg);
 
     let mut bounded_counter = CRDT::new(0, mutate_counter, basic_exploration, leg);
 
-    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
-    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
-    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
-    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
-    bounded_counter.apply(Operation::<()>::new(0, ()), 0);
+    bounded_counter.append(Operation::<()>::new(0, ()), 0);
+    bounded_counter.append(Operation::<()>::new(0, ()), 0);
+    bounded_counter.append(Operation::<()>::new(0, ()), 0);
+    bounded_counter.append(Operation::<()>::new(0, ()), 0);
+    bounded_counter.append(Operation::<()>::new(0, ()), 0);
 
     let result = bounded_counter.read();
     assert_eq!(result, 2);

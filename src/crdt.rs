@@ -1,6 +1,7 @@
 pub mod reconciliation_functions;
+pub mod legal_functions;
 
-use crate::dag::{Dag, Vertex, VertexId};
+use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, VertexId}, mutate_if_legal};
 
 pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + 'static {}
 
@@ -46,7 +47,7 @@ impl <P>VertexLabel<P> where P: OperationParameter {
 #[derive(Clone)]
 pub struct CRDT<S: Clone, P: OperationParameter> {
     mutate: fn(&S, &Operation<P>) -> S,
-    reconciliation: fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S, fn(&S, &Operation<P>) -> bool) -> S,
+    reconciliation: fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S,
     pub dag: Dag<VertexLabel<P>>,
     initial_state: S,
     local_id: usize,
@@ -54,7 +55,7 @@ pub struct CRDT<S: Clone, P: OperationParameter> {
 }
 
 impl <S: Clone, P: OperationParameter> CRDT<S, P> {
-    pub fn new(init: S, mutate: fn(&S, &Operation<P>) -> S, rec: fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S, fn(&S, &Operation<P>) -> bool) -> S, leg: fn(&S, &Operation<P>) -> bool) -> CRDT<S, P>
+    pub fn new(init: S, mutate: fn(&S, &Operation<P>) -> S, rec: fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S, leg: fn(&S, &Operation<P>) -> bool) -> CRDT<S, P>
     {
         CRDT { 
             mutate: mutate,
@@ -62,26 +63,31 @@ impl <S: Clone, P: OperationParameter> CRDT<S, P> {
             reconciliation: rec,
             initial_state: init,
             local_id: 1,
-            legality: leg,
+            legality: leg
         }
     }
 
-    pub fn apply(&mut self, op: Operation<P>, from: u32) -> Vec<VertexId> {
+    pub fn append(&mut self, op: Operation<P>, from: u32) -> Result<Vec<VertexId>, IllegalOperationError> {
+        let state = self.read();
+        if !(self.legality)(&state, &op) {
+            return Err(IllegalOperationError)
+        }
+
         let mut heads = self.dag.get_heads();
         let id = VertexId::new(self.local_id, from);
         self.local_id += 1;
         let v = Vertex::new(id, VertexLabel::new_from_op(op, from));
         self.dag.add_vertex(heads.clone(), v);
         heads.push(id);
-        heads
+        Ok(heads)
     }
 
-    pub fn apply_with_causal_context(&mut self, vertex: Vertex<VertexLabel<P>>, causal_context: Vec<VertexId>) {
+    pub fn append_with_causal_context(&mut self, vertex: Vertex<VertexLabel<P>>, causal_context: Vec<VertexId>) {
         self.dag.add_vertex(causal_context, vertex);
     }
 
     pub fn read(&self) -> S {
-        (self.reconciliation)(&self.dag, &self.initial_state, self.mutate, self.legality)
+        (self.reconciliation)(&self.dag, &self.initial_state, self.mutate)
     }
 }
 
@@ -115,7 +121,7 @@ mod tests {
             state
         }
 
-        let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug, |_,_| true);
+        let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug);
         assert_eq!(seq, vec![1, 1, 1]);
     }   
 
@@ -141,11 +147,14 @@ mod tests {
         
         fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
             let mut state = state.clone();
+            if state.len() >= 2 {
+                return state; // bounded set, no more than 2 elements
+            }
             state.push(op.id);
             state
         }
 
-        let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug, leg);
+        let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug);
         assert_eq!(seq, vec![1, 1]);
     }   
 
@@ -182,7 +191,7 @@ mod tests {
             state
         }
 
-        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug, |_,_| true);
+        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug);
         assert_eq!(seq, vec![1, 0, 1, 1, 1, 1]);
     }
 
@@ -192,7 +201,6 @@ mod tests {
             vec![true, true],
             vec![true, true]
         ];
-        let leg: fn(&Vec<usize>, &Operation<()>) -> bool = |seq, _| seq.len() < 3;
         
         let mut fair_concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
         fair_concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 1)));  // no concurrent, 0 stays
@@ -216,11 +224,15 @@ mod tests {
 
         fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
             let mut state = state.clone();
+            if state.len() >= 3 {
+                return state; // bounded set, no more than 2 elements
+            }
+
             state.push(op.id);
             state
         }
 
-        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug, leg);
+        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug);
         assert_eq!(seq, vec![1, 0, 1]);
     }
 }

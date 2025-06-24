@@ -5,7 +5,7 @@ Rely on graphviz for rendering: ```sudo apt install graphviz```.
 You may need to create a display directory to contain graphs.
 
 ## Framework
-We use a DAG to represent the causal order of operations. Each node in the DAG is label with an operation. The edges represent the order of operations. Each process has its own copy of the DAG. To apply an operation to the CRDT, a process appends a new vertex to its DAG and label it with the operation. It also adds an edge to each "head" of the DAG, which are the vertices that are not the target of any edge (leaves). Each CRDT is also defined with a reconciliation function that is used to compute a total order of operation to execute to get the current state of the CRDT.
+We use a DAG to represent the causal order of operations. Each node in the DAG is label with an operation. The edges represent the order of operations. Each process has its own copy of the DAG. To append an operation to the CRDT, a process appends a new vertex to its DAG and label it with the operation. It also adds an edge to each "head" of the DAG, which are the vertices that are not the target of any edge (leaves). Each CRDT is also defined with a reconciliation function that is used to compute a total order of operation to execute to get the current state of the CRDT.
 
 ## Branches
 - networking: network features (remote)
@@ -14,6 +14,6 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 
 
 ## TODO
-- dont rollback conflicting op just order them and output bot
-- new algo fairness and append
+- dont rollback conflicting op just order them
+- new algo fairness
 - complete tests

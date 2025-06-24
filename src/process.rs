@@ -47,20 +47,27 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
                     let v = m.vertex;
                     if v.id.process_id != self.id {
                         println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
-                        self.crdt.apply_with_causal_context(v, m.causal_context);
+                        self.crdt.append_with_causal_context(v, m.causal_context);
                     }
                 }
                 Some(op) = self.execute_chan_receiver.recv() => {
-                    let mut causal_context = self.crdt.apply(op.clone(), self.id);
-                    let local_id = causal_context.pop().unwrap();
-                    let v = self.crdt.dag.get_vertex(local_id).unwrap().clone();
+                    match self.crdt.append(op.clone(), self.id) {
+                        Ok(mut causal_context) => {
+                            let local_id = causal_context.pop().unwrap();
+                            let v = self.crdt.dag.get_vertex(local_id).unwrap().clone();
 
-                    println!("Process {} applied {}", self.id, op.id);
+                            println!("Process {} applied {}", self.id, op.id);
 
-                    let out_clone = self.out_chan.clone();
-                    tokio::spawn(async move {
-                        out_clone.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
-                    });
+                            let out_clone = self.out_chan.clone();
+                            tokio::spawn(async move {
+                                out_clone.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
+                            });
+                        }
+                        Err(e) => {
+                            println!("Process {} cannot apply {}: {}", self.id, op.id, e);
+                        }
+                    }
+                    
                 }
             }
 
