@@ -2,7 +2,7 @@ use std::vec::IntoIter;
 
 use crdt::crdt::legal_functions::total;
 use crdt::crdt::{Operation, OperationParameter, CRDT};
-use crdt::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation, handling_conflict};
+use crdt::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation};
 use crdt::mutate_if_legal;
 
 #[test]
@@ -211,4 +211,26 @@ fn bounded_counter() {
 
     let result = bounded_counter.read();
     assert_eq!(result, 2);
+}
+
+#[test]
+fn up_down_counter() {
+    fn counter(state: &i32, op: &Operation<()>) -> i32 {
+        match op.id {
+            0 => *state + 1, // increment
+            1 => *state - 1, // decrement
+            _ => *state,     // no change for other operations
+        }
+    }
+    mutate_if_legal!(i32, (), mutate_counter, counter, total);
+
+    let mut counter = CRDT::new(0, mutate_counter, basic_exploration, total);
+    counter.append(Operation::<()>::new(0, ()), 0); // increment
+    counter.append(Operation::<()>::new(0, ()), 0); // increment
+    assert_eq!(counter.read(), 2);
+
+    counter.append(Operation::<()>::new(1, ()), 0); // decrement
+    counter.append(Operation::<()>::new(1, ()), 0); // decrement
+    counter.append(Operation::<()>::new(1, ()), 0); // decrement
+    assert_eq!(counter.read(), -1);
 }

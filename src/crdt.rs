@@ -1,7 +1,7 @@
 pub mod reconciliation_functions;
 pub mod legal_functions;
 
-use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, VertexId}, mutate_if_legal};
+use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, VertexId}, mutate_if_legal, order_based_reconciliation};
 
 pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + 'static {}
 
@@ -93,22 +93,28 @@ impl <S: Clone, P: OperationParameter> CRDT<S, P> {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
+
     use super::*;
-    use crate::crdt::reconciliation_functions::{basic_exploration, handling_conflict, fair_reconciliation};
+    use crate::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation};
 
     #[test]
     fn concurrent_set() {
         // remove wins (1)
-        let add_remove_order = vec![
-            vec![None, Some(1)],
-            vec![Some(1), None]
-        ];
-        let add_remove_reconciliation = handling_conflict(add_remove_order);
+        fn add_remove_order(v1: &Vertex<VertexLabel<()>>, v2: &Vertex<VertexLabel<()>>) -> Ordering {
+            match (v1.label.op.id, v2.label.op.id) {
+                (0, 1) => Ordering::Less,  // add before remove
+                (1, 0) => Ordering::Greater, // remove after add
+                _ => Ordering::Equal // same operation id
+            }
+        }
+
+        order_based_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
         // adding concurrency for debugging
         let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
         concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 0)));  // no concurrent, 0 stays
         concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, (), 0)));
-        concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 0)));  // concurrent, 1 wins
+        concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 0)));  // concurrent, 1 wins, then 0
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(0, (), 0)));
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(1, (), 0)));
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(0, (), 0))); 
@@ -122,40 +128,43 @@ mod tests {
         }
 
         let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug);
-        assert_eq!(seq, vec![1, 1, 1]);
+        assert_eq!(seq, vec![0, 1, 0, 1, 1, 0, 0]);
     }   
 
     #[test]
     fn concurrent_bounded_set() {
         // remove wins (1)
-        let add_remove_order = vec![
-            vec![None, Some(1)],
-            vec![Some(1), None]
-        ];
-        let add_remove_reconciliation = handling_conflict(add_remove_order);
-        let leg: fn(&Vec<usize>, &Operation<()>) -> bool = |c, _| c.len() < 2;
+        fn add_remove_order(v1: &Vertex<VertexLabel<()>>, v2: &Vertex<VertexLabel<()>>) -> Ordering {
+            match (v1.label.op.id, v2.label.op.id) {
+                (0, 1) => Ordering::Less,  // add before remove
+                (1, 0) => Ordering::Greater, // remove after add
+                _ => Ordering::Equal // same operation id
+            }
+        }
+
+        order_based_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
+        fn leg (state: &Vec<usize>, op: &Operation<()>) -> bool {
+            state.len() < 4 // bounded set, no more than 2 elements
+        }
+        fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
+            let mut state = state.clone();
+            state.push(op.id);
+            state
+        }
+        mutate_if_legal!(Vec<usize>, (), mutate_bounded_counter, mutate_debug, leg);
 
         // adding concurrency for debugging
         let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
-        concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 0)));  // no concurrent, 0 stays
+        concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 0)));  // no concurrent, 0 first
         concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, (), 0)));
-        concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 0)));  // concurrent, 1 wins
+        concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 0)));  // concurrent, 1 wins, then 0
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(0, (), 0)));
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(1, (), 0)));
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(0, (), 0))); 
         concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(1, (), 0)));   // 4 concurrent, [1, 1] wins
-        
-        fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
-            let mut state = state.clone();
-            if state.len() >= 2 {
-                return state; // bounded set, no more than 2 elements
-            }
-            state.push(op.id);
-            state
-        }
 
-        let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_debug);
-        assert_eq!(seq, vec![1, 1]);
+        let seq = add_remove_reconciliation(&concurrent_set_dag, &vec![], mutate_bounded_counter);
+        assert_eq!(seq, vec![0, 1, 0, 1]);
     }   
 
     #[test]

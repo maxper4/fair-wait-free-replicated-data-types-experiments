@@ -3,10 +3,11 @@ pub mod crdt;
 mod process;
 mod rendering;
 
+use std::cmp::Ordering;
 use std::vec;
 
 use crdt::{Operation, OperationParameter, VertexLabel, CRDT};
-use crdt::reconciliation_functions::{basic_exploration, handling_conflict, fair_reconciliation};
+use crdt::reconciliation_functions::{basic_exploration, fair_reconciliation};
 use crdt::legal_functions::total;
 use dag::{Dag, Vertex, VertexId};
 
@@ -73,11 +74,15 @@ pub async fn run() {
 
     
     // remove wins (1)
-    let add_remove_order = vec![
-        vec![None, Some(1)],
-        vec![Some(1), None]
-    ];
-    let add_remove_reconciliation = handling_conflict(add_remove_order);
+    fn add_remove_order(v1: &Vertex<VertexLabel<()>>, v2: &Vertex<VertexLabel<()>>) -> Ordering {
+        match (v1.label.op.id, v2.label.op.id) {
+            (0, 1) => Ordering::Less,  // add before remove
+            (1, 0) => Ordering::Greater, // remove after add
+            _ => Ordering::Equal // same operation id
+        }
+    }
+
+    order_based_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
     // adding concurrency for debugging
     let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
     concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 0)));  // no concurrent, 0 stays

@@ -29,62 +29,40 @@ where P: OperationParameter, S: Clone {
     state
 }
 
-pub fn handling_conflict<P, S>(op_order: Vec<Vec<Option<usize>>>) -> impl Fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S
- where P: OperationParameter, S: Clone { 
-    move |dag: &Dag<VertexLabel<_>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S| {    // works when there is conflict, returns a function given an order
-    let mut toexplore: Vec<VertexId> = dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
-    let mut state = initial_state.clone();
-    let mut children = vec![];
+#[macro_export]
+macro_rules! order_based_reconciliation {
+($S:ty,$P:ty,$op_order:ident,$name:ident) => {
+    fn $name(dag: &Dag<VertexLabel<$P>>, initial_state: &$S, mutate: fn(&$S, &Operation<$P>) -> $S) -> $S {
+        let mut toexplore: Vec<VertexId> = vec![VertexId::new(0,0)];//dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
+        let mut state = initial_state.clone();
+        let mut children = vec![];
 
-    while toexplore.len() > 0 {
-        let head = toexplore.pop().unwrap();
-        for c in dag.get_edges_to_vertex(head) {
-            if !children.contains(&c.id) {
-                children.push(c.id);
+        while toexplore.len() > 0 {
+            let head = toexplore.pop().unwrap();
+            for c in dag.get_edges_to_vertex(head) {
+                if !children.contains(&c.id) {
+                    children.push(c.id);
+                }
             }
-        }
 
-        if toexplore.len() == 0 {   // we explored all vertices at the same level, children is now all vertices at distance k+1
-            toexplore.extend(children.clone());
-            let mut next_children: Vec<&Vertex<VertexLabel<_>>> = children.clone().into_iter().map(|c| dag.get_vertex(c).unwrap()).collect::<Vec<_>>();
-            children.clear();
+            if toexplore.len() == 0 {   // we explored all vertices at the same level, children is now all vertices at distance k+1
+                toexplore.extend(children.clone());
+                let mut next_children: Vec<&Vertex<VertexLabel<$P>>> = children.clone().into_iter().map(|c| dag.get_vertex(c).unwrap()).collect::<Vec<_>>();
+                children.clear();
 
-            next_children.sort_by(|x: &&Vertex<VertexLabel<_>>, y: &&Vertex<VertexLabel<_>> | x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
-            
-            while next_children.len() > 0 {    // take concurrent operations 2 by 2 and check conflicts
-                let v1: &Vertex<VertexLabel<_>> = next_children.pop().unwrap();
-                let mut conflicted = false;
-                let mut toremove = vec![];
+                next_children.sort_by(|x: &&Vertex<VertexLabel<_>>, y: &&Vertex<VertexLabel<_>> | $op_order(*y,*x));    // in reverse order, from greater to lesser
+                println!("next_children: {:?}", next_children.iter().map(|x| x.label.op.id).collect::<Vec<_>>());
 
-                for v2 in next_children.iter() {
-                    let winner = op_order[v1.label.op.id][v2.label.op.id];
-                    match winner {
-                        Some(label) => { 
-                            if label == v1.label.op.id { 
-                                toremove.push(*v2);
-                            }
-                            else { 
-                                conflicted = true; 
-                                break; 
-                            }
-                        }
-                        None => { continue; }   // commutes
-                    }
-                }
-                
-                // clean loosers
-                for v in toremove.into_iter() { // TODO: don't remove just order
-                    next_children.retain(|x: &&Vertex<VertexLabel<_>>| x.id != v.id);
-                }
-
-                if !conflicted {    // if no conflict with the whole set of concurrent operations, add in the order
+                while next_children.len() > 0 {    // take concurrent operations 2 by 2 and check conflicts
+                    let v1: &Vertex<VertexLabel<_>> = next_children.remove(0);
                     state = mutate(&state, &v1.label.op);
                 }
             }
         }
+        state
     }
-    state
-}}
+};
+}
 
 pub fn fair_reconciliation<P, S>(op_conflicts: Vec<Vec<bool>>) -> impl Fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S
 where P: OperationParameter, S: Clone { // TODO: new fairness
