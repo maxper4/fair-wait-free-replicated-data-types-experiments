@@ -10,28 +10,28 @@ use graphviz_rust::dot_generator::*;
 use crate::dag::Dag;
 
 
-fn to_graph_viz<T>(d: &Dag<T>) -> graphviz_rust::dot_structures::Graph {
+fn to_graph_viz<T>(d: &Dag<T>) -> graphviz_rust::dot_structures::Graph where T:Clone {
     let mut g = graph!(di id!("id"));
-    let mut toexplore = vec![d.get_root()];
+    let mut toexplore = vec![&d.get_root().id];
     let mut explored = vec![];
     while toexplore.len() > 0 {
         let head = toexplore.pop().unwrap();
-        g.add_stmt(stmt!(node!(head.id; attr!("label", head.id.to_string()))));
-        let children = d.get_edges_to_vertex(head.id);
+        g.add_stmt(stmt!(node!(head; attr!("label", head.to_string()))));
+        let children = d.get_edges_to_vertex(&head);
         for c in children {
-            if explored.contains(&head.id) {
+            if explored.contains(&head) {
                 continue;
             }
-            g.add_stmt(stmt!(edge!(node_id!(head.id) => node_id!(c.id), vec![attr!("a","b")])));
+            g.add_stmt(stmt!(edge!(node_id!(head) => node_id!(c), vec![attr!("a","b")])));
             toexplore.push(c);
         }
-        explored.push(head.id);
+        explored.push(head);
     }
     
     g
 }
 
-pub fn print_graph<T>(d: &Dag<T>, file_name: String) {
+pub fn print_graph<T>(d: &Dag<T>, file_name: String) where T:Clone {
     let res = exec(to_graph_viz(d), &mut PrinterContext::default(), vec![Format::Png.into()]);
     match res {
         Ok(e) => {     

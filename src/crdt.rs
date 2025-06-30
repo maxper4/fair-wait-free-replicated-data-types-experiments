@@ -96,7 +96,7 @@ mod tests {
     use std::cmp::Ordering;
 
     use super::*;
-    use crate::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation};
+    use crate::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation_no_n};
 
     #[test]
     fn concurrent_set() {
@@ -192,7 +192,6 @@ mod tests {
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(15, 0), VertexLabel::new(1, (), 2)));
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(16, 0), VertexLabel::new(0, (), 1))); 
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins
-        let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
 
         fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
             let mut state = state.clone();
@@ -200,7 +199,7 @@ mod tests {
             state
         }
 
-        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug);
+        let seq = fair_reconciliation_no_n(&fair_concurrent_set_dag, &vec![], mutate_debug);
         assert_eq!(seq, vec![1, 0, 1, 1, 1, 1]);
     }
 
@@ -229,7 +228,6 @@ mod tests {
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(15, 0), VertexLabel::new(1, (), 2)));
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(16, 0), VertexLabel::new(0, (), 1))); 
         fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins
-        let add_remove_fair_reconciliation = fair_reconciliation(onlyconflict);
 
         fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
             let mut state = state.clone();
@@ -241,7 +239,7 @@ mod tests {
             state
         }
 
-        let seq = add_remove_fair_reconciliation(&fair_concurrent_set_dag, &vec![], mutate_debug);
+        let seq = fair_reconciliation_no_n(&fair_concurrent_set_dag, &vec![], mutate_debug);
         assert_eq!(seq, vec![1, 0, 1]);
     }
 }

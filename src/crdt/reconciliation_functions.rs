@@ -1,30 +1,17 @@
 use crate::crdt::{Operation, OperationParameter, VertexLabel, CRDT};
 use crate::dag::{Dag, Vertex, VertexId};
 
+use std::hash::Hash;
 use std::vec::IntoIter;
 use std::collections::HashMap;
 
 pub fn basic_exploration<P, S>(dag: &Dag<VertexLabel<P>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S) -> S  // works when there is no conflict
 where P: OperationParameter, S: Clone {
-    let mut toexplore: Vec<VertexId> = dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
     let mut state = initial_state.clone();
-    let mut children = vec![];
-
-    while toexplore.len() > 0 {
-        let head = toexplore.pop().unwrap();
-        let v: &Vertex<_> = dag.get_vertex(head).unwrap();
-
+    let mut all = dag.get_all_ids().iter().map(|x| dag.get_vertex(x).unwrap()).collect::<Vec<_>>();
+    all.sort_by(|x, y| x.distance.cmp(&y.distance)); // sort all vertices by distance from the root
+    for v in all {
         state = mutate(&state, &v.label.op);
-
-        for c in dag.get_edges_to_vertex(head) {
-            if !children.contains(&c.id) {
-                children.push(c.id);
-            }
-        }
-        if toexplore.len() == 0 {
-            toexplore.extend(children.clone());
-            children.clear();
-        }
     }
     state
 }
@@ -33,106 +20,63 @@ where P: OperationParameter, S: Clone {
 macro_rules! order_based_reconciliation {
 ($S:ty,$P:ty,$op_order:ident,$name:ident) => {
     fn $name(dag: &Dag<VertexLabel<$P>>, initial_state: &$S, mutate: fn(&$S, &Operation<$P>) -> $S) -> $S {
-        let mut toexplore: Vec<VertexId> = vec![VertexId::new(0,0)];//dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
         let mut state = initial_state.clone();
-        let mut children = vec![];
+        let mut all = dag.get_all_ids().iter().map(|x| dag.get_vertex(x).unwrap()).collect::<Vec<_>>();
+        all.sort_by(|x, y| x.distance.cmp(&y.distance)); // sort all vertices by distance from the root
 
-        while toexplore.len() > 0 {
-            let head = toexplore.pop().unwrap();
-            for c in dag.get_edges_to_vertex(head) {
-                if !children.contains(&c.id) {
-                    children.push(c.id);
-                }
-            }
-
-            if toexplore.len() == 0 {   // we explored all vertices at the same level, children is now all vertices at distance k+1
-                toexplore.extend(children.clone());
-                let mut next_children: Vec<&Vertex<VertexLabel<$P>>> = children.clone().into_iter().map(|c| dag.get_vertex(c).unwrap()).collect::<Vec<_>>();
-                children.clear();
-
-                next_children.sort_by(|x: &&Vertex<VertexLabel<_>>, y: &&Vertex<VertexLabel<_>> | $op_order(*y,*x));    // in reverse order, from greater to lesser
-                println!("next_children: {:?}", next_children.iter().map(|x| x.label.op.id).collect::<Vec<_>>());
-
-                while next_children.len() > 0 {    // take concurrent operations 2 by 2 and check conflicts
-                    let v1: &Vertex<VertexLabel<_>> = next_children.remove(0);
-                    state = mutate(&state, &v1.label.op);
-                }
+        for i in 1..dag.length {
+            let mut concurrent = all.iter().filter(|v| v.distance == i).collect::<Vec<_>>();
+            concurrent.sort_by(|x, y| $op_order(*y,*x)); // sort concurrent vertices by operation order
+            for v in concurrent {
+                state = mutate(&state, &v.label.op);
             }
         }
+        
         state
     }
 };
 }
 
-pub fn fair_reconciliation<P, S>(op_conflicts: Vec<Vec<bool>>) -> impl Fn(&Dag<VertexLabel<P>>, &S, fn(&S, &Operation<P>) -> S) -> S
-where P: OperationParameter, S: Clone { // TODO: new fairness
-    move |dag: &Dag<VertexLabel<_>>,initial_state: &S, mutate: fn(&S, &Operation<P>) -> S| {    // reconciliation is based on process fairness rather than semantically
-    let mut toexplore: Vec<VertexId> = dag.get_edges_to_vertex(VertexId::new(0, 0)).iter().map(|x| x.id).collect();
+// reconciliation based on process fairness rather than semantically
+pub fn fair_reconciliation_no_n<P, S>(dag: &Dag<VertexLabel<P>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S) -> S 
+where P: OperationParameter, S: Clone {
     let mut state = initial_state.clone();
-    let mut children = vec![];
-    let mut scores:HashMap<u32, u32> = HashMap::new();
-
-    while toexplore.len() > 0 {
-        let head = toexplore.pop().unwrap();
-        for c in dag.get_edges_to_vertex(head) {
-            if !children.contains(&c.id) {
-                children.push(c.id);
-            }
-        }
-        if toexplore.len() == 0 {   // we explored all vertices at the same level, children is now all vertices at distance k+1
-            toexplore.extend(children.clone());
-            let mut next_children: Vec<&Vertex<VertexLabel<_>>>  = children.clone().into_iter().map(|c| dag.get_vertex(c).unwrap()).collect::<Vec<_>>();
-            children.clear();
-
-            next_children.sort_by(|x: &&Vertex<VertexLabel<_>>, y: &&Vertex<VertexLabel<_>> | x.label.op.id.cmp(&y.label.op.id));  // what sort should we use?
-
-            let mut winners: Vec<&Vertex<VertexLabel<_>>>  = vec![];
-            let mut loosers: Vec<&Vertex<VertexLabel<_>>> = vec![];
-            
-            while next_children.len() > 0 {    // take concurrent operations 2 by 2 and check conflicts
-                let v1: &Vertex<VertexLabel<_>> = next_children.pop().unwrap();
-                let mut conflicted = false;
-                let mut toremove = vec![];
-
-                for v2 in next_children.iter() {
-                    let conflict = op_conflicts[v1.label.op.id][v2.label.op.id];
-                    if conflict {
-                        let p1 = v1.label.process_id;
-                        let p2 = v2.label.process_id;
-                        let score_p1 = *scores.get(&p1).unwrap_or(&0);
-                        let score_p2 = *scores.get(&p2).unwrap_or(&0);
-
-                        if score_p1 > score_p2 || (score_p1 == score_p2 && p1 >= p2) {
-                            toremove.push(*v2);
-                        } else {
-                            conflicted = true;
-                        }
-                    }
-                }
-                
-                // clean loosers
-                for v in toremove.into_iter() {
-                    next_children.retain(|x: &&Vertex<VertexLabel<_>>| x.id != v.id);
-                    loosers.push(v);
-                }
-
-                if conflicted {
-                    loosers.push(v1);
-                } else {    // if no conflict with the whole set of concurrent operations, add in the order
-                    winners.push(v1);
-                    state = mutate(&state, &v1.label.op);
-                }
-            }
-
-            for v in winners {
-                scores.insert(v.label.process_id, 0);
-            }
-
-            for v in loosers {
-                let old_score = *scores.get(&v.label.process_id).unwrap_or(&0);
-                scores.insert(v.label.process_id, old_score + 1);
-            }
-        }
+    let mut counter: HashMap<u32, u32> = HashMap::new();
+    let mut candidates: Vec<VertexId> = vec![VertexId::new(0, 0)]; // start with the root vertex
+    let all = dag.get_all_ids();
+    let mut explored: HashMap<VertexId, bool> = HashMap::new();
+    for v in all.clone() {
+        explored.insert(*v, false);
     }
+
+    while candidates.len() > 0 {
+        candidates.sort_by(|x, y| x.cmp(y)); // sort candidates by id (for instance, to have a deterministic order)
+        let current = candidates.remove(0);
+        let past = dag.past(&current, &explored); // past should be sorted as a reverse BFS
+        for p in past {
+            state = mutate(&state, &dag.get_vertex(&p).unwrap().label.op);
+            explored.insert(p, true);
+        }
+        explored.insert(current, true);
+        state = mutate(&state, &dag.get_vertex(&current).unwrap().label.op);
+        counter.insert(dag.get_vertex(&current).unwrap().label.process_id, counter.get(&dag.get_vertex(&current).unwrap().label.process_id).unwrap_or(&0) + 1);
+
+        let mut alive = dag.future(&current).iter().map(|v| v.process_id).collect::<Vec<_>>();
+        alive.sort();
+        alive.dedup();
+        if alive.len() == 0 {
+            break; // no more future vertices
+        }
+        let min = alive.iter().map(|p| counter[p]).min().unwrap_or(0);
+        let starving = alive.iter().filter(|p| counter[p] == min).collect::<Vec<_>>();
+        candidates = vec![*dag.first_from_processes(&current, &starving)];
+    }
+
+    let mut remaining = all.iter().filter(|x| !explored[x]).collect::<Vec<_>>();
+    remaining.sort_by(|x, y| dag.get_vertex(x).unwrap().distance.cmp(&dag.get_vertex(y).unwrap().distance)); // sort remaining vertices by distance from the root
+    for v in remaining {
+        state = mutate(&state, &dag.get_vertex(v).unwrap().label.op);
+    }
+
     state
-}}
+}

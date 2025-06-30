@@ -54,7 +54,7 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
                     match self.crdt.append(op.clone(), self.id) {
                         Ok(mut causal_context) => {
                             let local_id = causal_context.pop().unwrap();
-                            let v = self.crdt.dag.get_vertex(local_id).unwrap().clone();
+                            let v = self.crdt.dag.get_vertex(&local_id).unwrap().clone();
 
                             println!("Process {} applied {}", self.id, op.id);
 

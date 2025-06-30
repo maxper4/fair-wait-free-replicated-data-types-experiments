@@ -2,7 +2,7 @@ use std::vec::IntoIter;
 
 use crdt::crdt::legal_functions::total;
 use crdt::crdt::{Operation, OperationParameter, CRDT};
-use crdt::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation};
+use crdt::crdt::reconciliation_functions::{basic_exploration, fair_reconciliation_no_n};
 use crdt::mutate_if_legal;
 
 #[test]
