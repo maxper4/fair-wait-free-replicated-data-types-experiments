@@ -20,11 +20,21 @@ use tokio::sync::mpsc::Sender;
 
 use crate::process::CRDTOperationMessage;
 
+fn timestamp() -> u128 {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros()
+}
+
+fn date() -> String {
+    let now = SystemTime::now();
+    let datetime: chrono::DateTime<chrono::Utc> = now.into();
+    datetime.format("%H:%M:%S%.6f").to_string()
+}
+
 pub async fn run() {
     let config = Config::get("config.toml");
-    println!("{:?}", config.peers[0].ip);
-    let (network_chan, network_task): (Sender<CRDTOperationMessage<()>>, tokio::task::JoinHandle<()>) = network::run(&config).await;
-    tokio::join!(network_task);
+    println!("Process {} launched.", config.id);
+
+    let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
 
     fn mutate_counter(state: &u32, op: &Operation<CounterParameter>) -> u32 {
         *state + op.params.inc

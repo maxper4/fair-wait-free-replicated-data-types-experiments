@@ -56,7 +56,7 @@ EOF
       - "$port_host:4444"
     volumes:
         - ./process$id:/etc/experiment:rw
-    command: /usr/bin/experiment/crdt-experiment
+    command: /usr/bin/experiment/crdt
     user: ${USER_DOCKER}
     working_dir: /etc/experiment
     networks:
