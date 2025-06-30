@@ -234,5 +234,4 @@ pub async fn run() {
 
     let result = on_element.read();
     println!("{:?}", result);
-
 }

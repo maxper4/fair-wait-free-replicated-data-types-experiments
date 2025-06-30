@@ -190,6 +190,29 @@ impl<T> Dag<T> where T: Clone {
         future
     }
 
+    pub fn processes_in_future(&self, v: &VertexId, n: u32) -> Vec<u32>{
+        let mut processes = vec![];
+        let mut toexplore = self.get_edges_to_vertex(v);
+        let mut seen = vec![v];
+
+        while toexplore.len() > 0 && processes.len() < n as usize {
+            let head = toexplore.remove(0);
+            if !seen.contains(&&head) {
+                if !processes.contains(&head.process_id) {
+                    processes.push(head.process_id);
+                }
+
+                for parent in self.get_edges_to_vertex(&head) {
+                    if !seen.contains(&parent) {
+                        toexplore.push(parent);
+                        seen.push(parent);
+                    }
+                }
+            }
+        }
+        processes
+    }
+
     pub fn first_from_processes (&self, start: &VertexId, processes: &Vec<&u32>) -> &VertexId {
         let mut toexplore = self.get_edges_to_vertex(&start);
         let mut seen = vec![start];

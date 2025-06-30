@@ -15,5 +15,4 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 
 ## TODO
 - test fairness
-- optimized version of fairness by knowing n
 - complete tests
