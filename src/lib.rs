@@ -21,6 +21,8 @@ use crate::process::{CRDTOperationMessage, Process};
 
 pub async fn run() {
     let config = Config::get("config.toml");
+    println!("Process {} launched.", config.id);
+
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
 
     fn mutate_counter(state: &u32, op: &Operation<CounterParameter>) -> u32 {
