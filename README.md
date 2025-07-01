@@ -11,6 +11,7 @@ We use a DAG to represent the causal order of operations. Each node in the DAG i
 - networking: network features (remote)
 - docker-experiments: run multi-processes experiments in docker (local but use networking)
 - threads-experiments: run experiments with multiple threads simulating processes (local)
+- mempool: run experiments with a mempool (base is docker-experiments)
 
 ## Install
 
