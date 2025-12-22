@@ -41,33 +41,77 @@ pub async fn run<P>(config: &Config) -> (Sender<CRDTOperationMessage<P>>, Receiv
 async fn accept_connections<P>(ip: String, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned {
     let listener = TcpListener::bind(ip).await.unwrap();
     loop {
-        let (stream, _) = listener.accept().await.unwrap(); // TODO handle failure
-        let peers_to_local_sender = peers_to_local_sender.clone();
-        tokio::spawn(async move {
-            listen_peer(stream, peers_to_local_sender).await;
-        });
-        
+        match listener.accept().await {
+            Ok((stream, _)) => { 
+                let peers_to_local_sender = peers_to_local_sender.clone();
+                tokio::spawn(async move {
+                    listen_peer(stream, peers_to_local_sender).await;
+                });
+            },
+            Err(e) => println!("Accept connection failed: {:?}", e),
+        }
     }
 }
 
 async fn listen_peer<P>(mut stream: TcpStream, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned {
     loop {
-        let len = stream.read_u64().await.unwrap(); // TODO handle failure
-        let mut buf = vec![0; len as usize];
-        stream.read(&mut buf).await.unwrap(); // TODO handle failure, closing
+        match stream.read_u64().await {
+            Ok(0) => {
+                println!("Connection closed by peer {}", stream.peer_addr().unwrap());
+                break;
+            },
+            Ok(len) => {
+                let mut buf = vec![0; len as usize];
 
-        let msg = bincode::deserialize(&buf).unwrap(); // TODO handle failure
-        peers_to_local_sender.send(msg).await.unwrap(); // TODO handle failure
+                match stream.read(&mut buf).await {
+                    Ok(_) => {
+                        match bincode::deserialize(&buf) {
+                            Ok(msg) => {
+                                peers_to_local_sender.send(msg).await.unwrap(); // TODO handle failure
+                            },
+                            Err(e) => {
+                                println!("Error deserializing message from peer {}: {}", stream.peer_addr().unwrap(), e);
+                                continue;
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println!("Error reading buffer {}: {}", stream.peer_addr().unwrap(), e);
+                        break;
+                    }
+                }
+            },
+            Err(e) => {
+                println!("Error listen peer {}: {}", stream.peer_addr().unwrap(), e);
+                break;
+            }
+        }        
     }
 }
 
 async fn talk<P>(mut local_to_peers_receiver: Receiver<CRDTOperationMessage<P>>, mut out_peers: Vec<TcpStream>) where P: OperationParameter {
     while let Some(msg) = local_to_peers_receiver.recv().await {
-        let bytes = bincode::serialize(&msg).unwrap(); // TODO handle failure
-
-        for peer in &mut out_peers {
-            peer.write_u64(bytes.len() as u64).await.unwrap(); // TODO handle failure
-            peer.write(&bytes).await.unwrap(); // TODO handle failure
+        match bincode::serialize(&msg) {
+            Ok(bytes) => {
+                for peer in &mut out_peers {
+                    match peer.write_u64(bytes.len() as u64).await {
+                        Ok(_) => {
+                            match peer.write(&bytes).await {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    println!("Error sending message to peer {}: {}", peer.peer_addr().unwrap(), e);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            println!("Error sending message length to peer {}: {}", peer.peer_addr().unwrap(), e);
+                        }
+                    }
+                }
+            },
+            Err(e) => {
+                println!("Error serializing message: {}", e);
+            },
         }
     }
 }
