@@ -24,7 +24,7 @@ macro_rules! order_based_reconciliation {
         let mut all = dag.get_all_ids().iter().map(|x| dag.get_vertex(x).unwrap()).collect::<Vec<_>>();
         all.sort_by(|x, y| x.distance.cmp(&y.distance)); // sort all vertices by distance from the root
 
-        for i in 1..dag.length {
+        for i in 1..(dag.length+1) {
             let mut concurrent = all.iter().filter(|v| v.distance == i).collect::<Vec<_>>();
             concurrent.sort_by(|x, y| $op_order(*y,*x)); // sort concurrent vertices by operation order
             for v in concurrent {
