@@ -6,6 +6,10 @@ for i in "$@"; do
       p="${i#*=}"
       shift # past argument=value
       ;;
+    -e=*|--experiment=*)
+      e="${i#*=}"
+      shift # past argument=value
+      ;;
     -*|--*)
       echo "Unknown option $i"
       exit 1
@@ -19,6 +23,7 @@ mkdir -p experiment
 
 # default config if not specified
 if [ -z "$p" ]; then p=4; fi
+if [ -z "$e" ]; then e=0; fi
 
 USER_DOCKER="$(id -u):$(id -g)"
 
@@ -46,6 +51,7 @@ cat << EOF > ./experiment/process$id/config.toml
 id = $id
 ip = 'process$id:4444'
 peers = $peers
+experiment_type = $e
 EOF
 
     cat << EOF >> ./experiment/docker-compose.yml
@@ -77,14 +83,3 @@ networks:
         - subnet: 192.167.0.0/16
 
 EOF
-
-
-
-if ! [ -z "$(which jq)" ]; then
-  find experiment/ -name 'node[0-9]*' -print0 |
-    while IFS= read -r -d '' node; do
-      tmp=$(mktemp)
-      jq '.chain_id = "fantastyc-testnet"' $node/config/genesis.json> $tmp
-      mv $tmp $node/config/genesis.json
-    done
-fi

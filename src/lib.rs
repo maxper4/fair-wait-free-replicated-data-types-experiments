@@ -34,7 +34,7 @@ fn date() -> String {
 pub async fn run() {
     let config = Config::get("config.toml");
     let wakeup_time = timestamp();
-    println!("Process {} launched at {}.", config.id, wakeup_time);
+    println!("Process {} launched at {} for experiment type {}.", config.id, wakeup_time, config.experiment_type);
 
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
 

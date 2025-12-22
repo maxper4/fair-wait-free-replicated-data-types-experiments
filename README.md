@@ -55,6 +55,20 @@ sudo apt update
 sudo apt install docker-compose
 ```
 
+## Experiments
+You can run experiments with multiple processes using docker with: 
+1. Build the docker image:
+
+```text make build```
+
+2. Run the experiment with its parameters (p is the number of processes, e the experiment type):
+
+```text make run p=3 e=0```
+
+3. Stop the experiment:
+
+```text make stop```
+
 ## TODO
 - test fairness
 - complete tests
