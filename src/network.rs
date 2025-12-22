@@ -56,6 +56,10 @@ async fn accept_connections<P>(ip: String, peers_to_local_sender: Sender<CRDTOpe
 async fn listen_peer<P>(mut stream: TcpStream, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned {
     loop {
         match stream.read_u64().await {
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                println!("Connection closed by peer {}", stream.peer_addr().unwrap());
+                break;
+            },
             Ok(0) => {
                 println!("Connection closed by peer {}", stream.peer_addr().unwrap());
                 break;
