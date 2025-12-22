@@ -37,17 +37,23 @@ pub struct Process<S: Clone+Debug, P> where P: OperationParameter {
     in_chan: Receiver<CRDTOperationMessage<P>>,
     pub execute_chan_sender: Sender<Operation<P>>,
     execute_chan_receiver: Receiver<Operation<P>>,
+    pub control_chan_sender: Sender<u8>,
+    control_chan_receiver: Receiver<u8>,
 }
 
 impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
     pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>) -> Process<S, P> {
         let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
+        let (control_chan_sender, control_chan_receiver) = tokio::sync::mpsc::channel(5);
+
         Process { 
             id: id, 
             crdt: crdt.clone(),
             in_chan: in_chan,
             execute_chan_sender: execute_chan_sender,
             execute_chan_receiver: execute_chan_receiver,
+            control_chan_sender: control_chan_sender,
+            control_chan_receiver: control_chan_receiver,
         }
     }
 
@@ -127,5 +133,9 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
                 println!("Process {} cannot apply {}: {}", self.id, op.id, e);
             }
         }
+    }
+
+    pub fn metrics(&self) {
+        println!("Process {} metrics: DAG length: {}", self.id, self.crdt.dag.length);
     }
 }

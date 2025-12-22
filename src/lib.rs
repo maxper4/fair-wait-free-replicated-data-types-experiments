@@ -62,12 +62,13 @@ pub async fn run() {
     let counter = CRDT::new(0, mutate_counter, basic_exploration, total);
     let mut process = Process::new(config.id, &counter, from_network_chan);
     let process_executor = process.execute_chan_sender.clone();
+    let control_process = process.control_chan_sender.clone();
 
     let process_task = tokio::spawn(async move {
                 process.run(to_network_chan).await;
             });
 
-    let execute_task = tokio::spawn(async move {
+    let execute_task = async move {
         if config.id != 1 {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -85,14 +86,17 @@ pub async fn run() {
             }
         }
         
-    });
+    };
 
     tokio::time::timeout(tokio::time::Duration::from_secs(30), async { tokio::join!(process_task, execute_task) }).await;
+    let now = timestamp();
+    println!("Process {} finished experiment at {}.", config.id, timestamp());
 
     network_task.await;     // wait for all peers to finish their talking tasks, which terminates the listening tasks here
     println!("Process {} network tasks stopped.", config.id);
     process_task.await.unwrap();    // wait to finish processing all messages received (pending in the asynchronous channel from network to process)
     
-    let now = timestamp();
-    println!("Process {} stopped at {}.", config.id, now);
+    control_process.send(0).await.unwrap();
+
+    println!("Process {} stopped at {}.", config.id, timestamp());
 }
