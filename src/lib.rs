@@ -8,6 +8,7 @@ mod network;
 use std::cmp::Ordering;
 use std::time::SystemTime;
 use std::vec;
+use std::time::{Duration, SystemTime};
 
 use crdt::{Operation, OperationParameter, VertexLabel, CRDT};
 use crdt::reconciliation_functions::{basic_exploration, fair_reconciliation_no_n};
@@ -32,7 +33,8 @@ fn date() -> String {
 
 pub async fn run() {
     let config = Config::get("config.toml");
-    println!("Process {} launched.", config.id);
+    let wakeup_time = timestamp();
+    println!("Process {} launched at {}.", config.id, wakeup_time);
 
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
 
@@ -43,12 +45,14 @@ pub async fn run() {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     struct CounterParameter {
         inc: u32,
+        time: u128,
     }
 
     impl Default for CounterParameter {
         fn default() -> Self {
             CounterParameter {
                 inc: 1,
+                time: timestamp(),
             }
         }
     }
@@ -64,27 +68,31 @@ pub async fn run() {
             });
 
     let execute_task = tokio::spawn(async move {
-        if config.id == 1 {
+        if config.id != 1 {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                let op = Operation::new(0, CounterParameter { inc: 1 });
+                let now = timestamp();
+                let op = Operation::new(0, CounterParameter { inc: 1, time: now });
                 process_executor.send(op).await.unwrap();
             }
         }
-        if config.id == 2 {
+        if config.id == 1 {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                let op = Operation::new(0, CounterParameter { inc: 10 });
+                let now = timestamp();
+                let op = Operation::new(0, CounterParameter { inc: 10, time: now });
                 process_executor.send(op).await.unwrap();
             }
         }
         
     });
 
-    // TODO: here execute ops
-    execute_task.await.unwrap();
+    tokio::time::timeout(tokio::time::Duration::from_secs(30), async { tokio::join!(process_task, execute_task) }).await;
 
     network_task.await;     // wait for all peers to finish their talking tasks, which terminates the listening tasks here
     println!("Process {} network tasks stopped.", config.id);
     process_task.await.unwrap();    // wait to finish processing all messages received (pending in the asynchronous channel from network to process)
+    
+    let now = timestamp();
+    println!("Process {} stopped at {}.", config.id, now);
 }

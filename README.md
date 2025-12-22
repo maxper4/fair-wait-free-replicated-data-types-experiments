@@ -51,8 +51,8 @@ docker-compose version
 Otherwise, you can install it with:
 
 ```text
-sudo apt-get update
-sudo apt-get install docker-compose
+sudo apt update
+sudo apt install docker-compose
 ```
 
 ## TODO
