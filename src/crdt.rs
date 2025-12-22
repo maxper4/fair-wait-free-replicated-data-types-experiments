@@ -10,7 +10,7 @@ pub trait OperationParameter: Clone + Debug + Send + PartialEq + Eq + Default + 
 
 impl OperationParameter for () {}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Operation<P> where P: OperationParameter {    
     pub id: usize,
     pub params: P,

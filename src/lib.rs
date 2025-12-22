@@ -17,6 +17,7 @@ use dag::{Dag, Vertex, VertexId};
 
 use config::Config;
 use serde::{Deserialize, Serialize};
+use tokio::select;
 use tokio::sync::mpsc::Sender;
 
 use crate::process::CRDTOperationMessage;
@@ -37,66 +38,115 @@ pub async fn run() {
     println!("Process {} launched at {} for experiment type {}.", config.id, wakeup_time, config.experiment_type);
 
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
+    let (to_metrics_chan, mut from_metrics_chan) : (Sender<(Vec<Operation<CommandsParameter>>, u128)>, tokio::sync::mpsc::Receiver<(Vec<Operation<CommandsParameter>>, u128)>) = tokio::sync::mpsc::channel(100);
 
-    fn mutate_counter(state: &u32, op: &Operation<CounterParameter>) -> u32 {
-        *state + op.params.inc
+    fn mutate_commands(state: &Vec<Operation<CommandsParameter>>, op: &Operation<CommandsParameter>) -> Vec<Operation<CommandsParameter>> {
+        let mut state = state.clone();
+        state.push(op.clone());
+        state
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    struct CounterParameter {
-        inc: u32,
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+    struct CommandsParameter {
         time: u128,
     }
 
-    impl Default for CounterParameter {
+    impl Default for CommandsParameter {
         fn default() -> Self {
-            CounterParameter {
-                inc: 1,
+            CommandsParameter {
                 time: timestamp(),
             }
         }
     }
 
-    impl OperationParameter for CounterParameter {}
+    impl OperationParameter for CommandsParameter {}
 
-    let counter = CRDT::new(0, mutate_counter, basic_exploration, total);
-    let mut process = Process::new(config.id, &counter, from_network_chan);
+    fn commands_order(v1: &Vertex<VertexLabel<CommandsParameter>>, v2: &Vertex<VertexLabel<CommandsParameter>>) -> Ordering {
+        match v1.label.op.id.cmp(&v2.label.op.id) {
+            Ordering::Equal => v1.id.process_id.cmp(&v2.id.process_id),
+            ord => return ord,
+        }
+    }
+
+    order_based_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
+
+    let commands = CRDT::new(vec![], mutate_commands, stable_commands_reconciliation, total);
+    let mut process = Process::new(config.id, &commands, from_network_chan, &to_network_chan, &to_metrics_chan);
     let process_executor = process.execute_chan_sender.clone();
-    let control_process = process.control_chan_sender.clone();
 
     let process_task = tokio::spawn(async move {
                 process.run(to_network_chan).await;
             });
 
     let execute_task = async move {
+        let mut counter = 0;
+
         if config.id != 1 {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 let now = timestamp();
-                let op = Operation::new(0, CounterParameter { inc: 1, time: now });
+                let op = Operation::new(counter, CommandsParameter { time: now });
                 process_executor.send(op).await.unwrap();
+                counter += 1;
             }
         }
         if config.id == 1 {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 let now = timestamp();
-                let op = Operation::new(0, CounterParameter { inc: 10, time: now });
+                let op = Operation::new(0, CommandsParameter { time: now });
                 process_executor.send(op).await.unwrap();
+                counter += 1;
             }
         }
         
     };
 
-    tokio::time::timeout(tokio::time::Duration::from_secs(30), async { tokio::join!(process_task, execute_task) }).await;
-    let now = timestamp();
+    let (to_control_metrics_chan, mut control_metrics) : (Sender<u8>, tokio::sync::mpsc::Receiver<u8>) = tokio::sync::mpsc::channel(10);
+
+    let compute_metrics_task = tokio::spawn(async move {
+        let mut last_moved: HashMap<Operation<CommandsParameter>, u128> = HashMap::new();
+        let mut last_position: HashMap<Operation<CommandsParameter>, usize> = HashMap::new();
+        let mut reodering_count: HashMap<Operation<CommandsParameter>, u32> = HashMap::new();
+
+        loop {
+            select! {
+                Some((state, now)) = from_metrics_chan.recv() => {
+
+                    for i in 0..state.len() {
+                        if last_moved.get(&state[i]).is_none() || last_position.get(&state[i]).unwrap() != &i {
+                            last_moved.insert(state[i].clone(), now);
+                            last_position.insert(state[i].clone(), i);
+                            reodering_count.entry(state[i].clone()).and_modify(|e| *e += 1).or_insert(0);
+                        }
+                    }
+                },
+                Some(_) = control_metrics.recv() => {
+                    break;
+                }
+            }
+        }
+
+        let sum : u128 = last_moved.iter().map(|(op, time)| time - op.params.time).sum();
+        let avg = sum as f64 / last_moved.len() as f64;
+
+        println!("Average time for process {}: {} seconds over {} operations.", config.id, avg / 1000000 as f64, last_moved.len());
+        let total_reorderings : u32 = reodering_count.iter().map(|(_, count)| *count).sum();
+        let avg_reorderings = total_reorderings as f64 / reodering_count.len() as f64;
+        println!("Average reorderings for process {}: {} over {} operations.", config.id, avg_reorderings, reodering_count.len());
+    });
+
+    
+    tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await;   // maybe need to join also on network_task, process_task
+
     println!("Process {} finished experiment at {}.", config.id, timestamp());
 
     network_task.await;     // wait for all peers to finish their talking tasks, which terminates the listening tasks here
     println!("Process {} network tasks stopped.", config.id);
     process_task.await.unwrap();    // wait to finish processing all messages received (pending in the asynchronous channel from network to process)
     
-    control_process.send(0).await.unwrap();
+    to_control_metrics_chan.send(0).await.unwrap();
+    compute_metrics_task.await.unwrap();
 
     println!("Process {} stopped at {}.", config.id, timestamp());
 }

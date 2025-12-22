@@ -1,7 +1,7 @@
 use core::fmt;
-use std::fmt::{Debug, Display};
+use std::{collections::HashMap, fmt::{Debug, Display}};
 
-use crate::{crdt::{Operation, OperationParameter, VertexLabel, CRDT}, dag::{Vertex, VertexId}};
+use crate::{crdt::{CRDT, Operation, OperationParameter, VertexLabel}, dag::{Vertex, VertexId}, timestamp};
 use tokio::{select, sync::mpsc::{Receiver, Sender}};
 use serde::{Deserialize, Serialize};
 
@@ -31,20 +31,18 @@ impl <P>CRDTOperationMessage<P> where P: OperationParameter {
     }
 }
 
-pub struct Process<S: Clone+Debug, P> where P: OperationParameter {
+pub struct Process<S: Clone+Debug+'static, P> where P: OperationParameter {
     pub id: u32,
     pub crdt: CRDT<S, P>,
     in_chan: Receiver<CRDTOperationMessage<P>>,
     pub execute_chan_sender: Sender<Operation<P>>,
     execute_chan_receiver: Receiver<Operation<P>>,
-    pub control_chan_sender: Sender<u8>,
-    control_chan_receiver: Receiver<u8>,
+    metrics_out_chan: Sender<(S, u128)>,
 }
 
-impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
-    pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>) -> Process<S, P> {
+impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParameter {
+    pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>, metrics_out_chan: &Sender<(S,u128)>) -> Process<S, P> {
         let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
-        let (control_chan_sender, control_chan_receiver) = tokio::sync::mpsc::channel(5);
 
         Process { 
             id: id, 
@@ -52,8 +50,7 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
             in_chan: in_chan,
             execute_chan_sender: execute_chan_sender,
             execute_chan_receiver: execute_chan_receiver,
-            control_chan_sender: control_chan_sender,
-            control_chan_receiver: control_chan_receiver,
+            metrics_out_chan: metrics_out_chan.clone(),
         }
     }
 
@@ -133,9 +130,5 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
                 println!("Process {} cannot apply {}: {}", self.id, op.id, e);
             }
         }
-    }
-
-    pub fn metrics(&self) {
-        println!("Process {} metrics: DAG length: {}", self.id, self.crdt.dag.length);
     }
 }
