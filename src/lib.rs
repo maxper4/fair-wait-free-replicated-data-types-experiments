@@ -8,6 +8,7 @@ mod network;
 use std::cmp::Ordering;
 use std::time::SystemTime;
 use std::vec;
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::time::{Duration, SystemTime};
 
 use crdt::{Operation, OperationParameter, VertexLabel, CRDT};
@@ -71,7 +72,7 @@ pub async fn run() {
     order_based_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
 
     let commands = CRDT::new(vec![], mutate_commands, stable_commands_reconciliation, total);
-    let mut process = Process::new(config.id, &commands, from_network_chan, &to_network_chan, &to_metrics_chan);
+    let mut process = Process::new(config.id, &commands, from_network_chan, &to_metrics_chan);
     let process_executor = process.execute_chan_sender.clone();
 
     let process_task = tokio::spawn(async move {
@@ -79,11 +80,17 @@ pub async fn run() {
             });
 
     let execute_task = async move {
-        let mut counter = 0;
+        let mut counter = 1;
+
+        let mut rng = {
+            let rng = rand::thread_rng();
+            StdRng::from_rng(rng).unwrap()
+        };
 
         if config.id != 1 {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                let delay = rng.gen_range(1..5);
+                tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
                 let now = timestamp();
                 let op = Operation::new(counter, CommandsParameter { time: now });
                 process_executor.send(op).await.unwrap();
@@ -92,9 +99,10 @@ pub async fn run() {
         }
         if config.id == 1 {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                let delay = rng.gen_range(5..10);
+                tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
                 let now = timestamp();
-                let op = Operation::new(0, CommandsParameter { time: now });
+                let op = Operation::new(counter, CommandsParameter { time: now });
                 process_executor.send(op).await.unwrap();
                 counter += 1;
             }

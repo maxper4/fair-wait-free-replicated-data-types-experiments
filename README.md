@@ -62,6 +62,7 @@ You can run experiments with multiple processes using docker with:
 ```text make build```
 
 2. Run the experiment with its parameters (p is the number of processes, e the experiment type):
+/!\ needs to run with root to use NET_ADMIN capability for networking (add network delays, drops, etc.)
 
 ```text make run p=3 e=0```
 

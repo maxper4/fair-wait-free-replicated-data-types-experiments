@@ -57,14 +57,17 @@ EOF
     cat << EOF >> ./experiment/docker-compose.yml
   process$id:
     container_name: process$id
+    cap_add:
+      - NET_ADMIN
     image: "process"
     ports:
       - "$port_host:4444"
     volumes:
         - ./process$id:/etc/experiment:rw
-    command: /usr/bin/experiment/crdt
+    command: sh -c "tc qdisc add dev eth0 root netem delay 100ms 10000ms distribution normal && /usr/bin/experiment/crdt"
     user: ${USER_DOCKER}
     working_dir: /etc/experiment
+
     networks:
       localnet:
         aliases:
