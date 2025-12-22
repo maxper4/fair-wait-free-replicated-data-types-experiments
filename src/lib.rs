@@ -6,6 +6,7 @@ mod config;
 mod network;
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::time::SystemTime;
 use std::vec;
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -21,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 
-use crate::process::CRDTOperationMessage;
+use crate::process::{CRDTOperationMessage, Process};
 
 fn timestamp() -> u128 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros()
@@ -31,6 +32,43 @@ fn date() -> String {
     let now = SystemTime::now();
     let datetime: chrono::DateTime<chrono::Utc> = now.into();
     datetime.format("%H:%M:%S%.6f").to_string()
+}
+
+pub trait OperationParameterWithInitialContext: OperationParameter {
+    type S;
+
+    fn get_initial_context(&self) -> (u128, Self::S);
+    fn set_initial_context(&mut self, time: u128, context: Self::S);
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+    pub struct CommandsParameter {
+        time: u128,
+        initial_context: Vec<Operation<CommandsParameter>>,
+    }
+
+    impl Default for CommandsParameter {
+        fn default() -> Self {
+            CommandsParameter {
+                time: timestamp(),
+                initial_context: vec![],
+            }
+        }
+    }
+
+impl OperationParameter for CommandsParameter {}
+
+impl OperationParameterWithInitialContext for CommandsParameter {
+    type S = Vec<Operation<CommandsParameter>>;
+
+    fn get_initial_context(&self) -> (u128, Vec<Operation<CommandsParameter>>) {
+        (self.time, self.initial_context.clone())
+    }
+
+    fn set_initial_context(&mut self, time: u128, context: Vec<Operation<CommandsParameter>>) {
+        self.initial_context = context;
+        self.time = time;
+    }
 }
 
 pub async fn run() {
@@ -47,20 +85,7 @@ pub async fn run() {
         state
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
-    struct CommandsParameter {
-        time: u128,
-    }
-
-    impl Default for CommandsParameter {
-        fn default() -> Self {
-            CommandsParameter {
-                time: timestamp(),
-            }
-        }
-    }
-
-    impl OperationParameter for CommandsParameter {}
+    
 
     fn commands_order(v1: &Vertex<VertexLabel<CommandsParameter>>, v2: &Vertex<VertexLabel<CommandsParameter>>) -> Ordering {
         match v1.label.op.id.cmp(&v2.label.op.id) {
@@ -69,14 +94,14 @@ pub async fn run() {
         }
     }
 
-    order_based_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
+    stable_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
 
     let commands = CRDT::new(vec![], mutate_commands, stable_commands_reconciliation, total);
     let mut process = Process::new(config.id, &commands, from_network_chan, &to_metrics_chan);
     let process_executor = process.execute_chan_sender.clone();
 
     let process_task = tokio::spawn(async move {
-                process.run(to_network_chan).await;
+                process.run_with_initial_context(to_network_chan).await;
             });
 
     let execute_task = async move {
@@ -91,8 +116,8 @@ pub async fn run() {
             loop {
                 let delay = rng.gen_range(1..5);
                 tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
-                let now = timestamp();
-                let op = Operation::new(counter, CommandsParameter { time: now });
+
+                let op = Operation::new(counter, CommandsParameter::default());
                 process_executor.send(op).await.unwrap();
                 counter += 1;
             }
@@ -101,8 +126,8 @@ pub async fn run() {
             loop {
                 let delay = rng.gen_range(5..10);
                 tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
-                let now = timestamp();
-                let op = Operation::new(counter, CommandsParameter { time: now });
+
+                let op = Operation::new(counter, CommandsParameter::default());
                 process_executor.send(op).await.unwrap();
                 counter += 1;
             }
@@ -114,18 +139,26 @@ pub async fn run() {
 
     let compute_metrics_task = tokio::spawn(async move {
         let mut last_moved: HashMap<Operation<CommandsParameter>, u128> = HashMap::new();
-        let mut last_position: HashMap<Operation<CommandsParameter>, usize> = HashMap::new();
         let mut reodering_count: HashMap<Operation<CommandsParameter>, u32> = HashMap::new();
+        let mut previous_contexts: HashMap<Operation<CommandsParameter>, Vec<Operation<CommandsParameter>>> = HashMap::new();
+// TODO optimize into one hashmap
+// TODO initial context need to be flatten to just ids to avoid recursive structures: solution is to hash the context?
 
         loop {
             select! {
                 Some((state, now)) = from_metrics_chan.recv() => {
 
                     for i in 0..state.len() {
-                        if last_moved.get(&state[i]).is_none() || last_position.get(&state[i]).unwrap() != &i {
+                        if last_moved.get(&state[i]).is_none() {
                             last_moved.insert(state[i].clone(), now);
-                            last_position.insert(state[i].clone(), i);
-                            reodering_count.entry(state[i].clone()).and_modify(|e| *e += 1).or_insert(0);
+                            reodering_count.insert(state[i].clone(), 0);
+                            previous_contexts.insert(state[i].clone(), state[0..i].to_vec());
+                        } 
+                        else if previous_contexts.get(&state[i]).unwrap() != &state[0..i].to_vec() {
+                            last_moved.insert(state[i].clone(), now);
+                            reodering_count.entry(state[i].clone()).and_modify(|e| *e += 1);
+                            
+                            previous_contexts.insert(state[i].clone(), state[0..i].to_vec());
                         }
                     }
                 },
@@ -139,13 +172,16 @@ pub async fn run() {
         let avg = sum as f64 / last_moved.len() as f64;
 
         println!("Average time for process {}: {} seconds over {} operations.", config.id, avg / 1000000 as f64, last_moved.len());
+
         let total_reorderings : u32 = reodering_count.iter().map(|(_, count)| *count).sum();
         let avg_reorderings = total_reorderings as f64 / reodering_count.len() as f64;
-        println!("Average reorderings for process {}: {} over {} operations.", config.id, avg_reorderings, reodering_count.len());
+        println!("Average reorderings for process {} by operation: {}.", config.id, avg_reorderings);
+
+        let fairly_stabilized : u32 = reodering_count.iter().filter(|(_, count)| **count == 0).count() as u32;  // TODO need to compare final context with initial context stored in the operation itself
+        println!("Number of fairly stabilized operations for process {}: {} out of {}.", config.id, fairly_stabilized, reodering_count.len());
     });
 
-    
-    tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await;   // maybe need to join also on network_task, process_task
+    tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await;
 
     println!("Process {} finished experiment at {}.", config.id, timestamp());
 
