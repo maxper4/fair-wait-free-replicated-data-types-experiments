@@ -11,6 +11,7 @@ use std::time::SystemTime;
 use std::vec;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::time::{Duration, SystemTime};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crdt::{Operation, OperationParameter, VertexLabel, CRDT};
 use crdt::reconciliation_functions::{basic_exploration, fair_reconciliation_no_n};
@@ -143,14 +144,16 @@ pub async fn run() {
                 Some((state, now)) = from_metrics_chan.recv() => {
 
                     for i in 0..state.len() {
+                        let actual_context = state[0..i].to_vec();
+
                         if metrics.get(&state[i]).is_none() {
-                            metrics.insert(state[i].clone(), (state[i].params.time, 0, state[0..i].to_vec()));
+                            metrics.insert(state[i].clone(), (state[i].params.time, 0, actual_context));
                         } 
-                        else if metrics.get(&state[i]).unwrap().2 != state[0..i].to_vec() {
+                        else if metrics.get(&state[i]).unwrap().2 != actual_context {
                             metrics.entry(state[i].clone()).and_modify(|e| {
                                 e.0 = now;
                                 e.1 += 1;
-                                e.2 = state[0..i].to_vec();
+                                e.2 = actual_context;
                             });
                         }
                     }
@@ -170,7 +173,10 @@ pub async fn run() {
         let avg_reorderings = total_reorderings as f64 / metrics.len() as f64;
         println!("Average reorderings by operation for process {}: {}.", config.id, avg_reorderings);
 
-        let fairly_stabilized : u32 = metrics.iter().filter(|(_, (_, count, _))| *count == 0).count() as u32;  // TODO need to compare final context with initial context stored in the operation itself
+        let fairly_stabilized : u32 = metrics.iter().filter(|(op, (_, _, final_context))| { 
+            let mut hasher = DefaultHasher::new();
+            final_context.hash(&mut hasher);
+            return hasher.finish() == op.params.initial_context_hash } ).count() as u32;
         println!("Number of fairly stabilized operations for process {}: {} out of {}.", config.id, fairly_stabilized, metrics.len());
     });
 
