@@ -1,5 +1,6 @@
 use core::fmt;
 use std::{collections::HashMap, fmt::{Debug, Display}};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::{OperationParameterWithInitialContext, crdt::{CRDT, Operation, OperationParameter, VertexLabel}, dag::{Vertex, VertexId}, timestamp};
 use tokio::{select, sync::mpsc::{Receiver, Sender}};
@@ -136,7 +137,7 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
 
 }
 
-impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParameterWithInitialContext<S=S> {
+impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationParameterWithInitialContext {
 
     pub async fn run_with_initial_context(&mut self, out_chan: Sender<CRDTOperationMessage<P>>) {
         loop {
@@ -147,7 +148,9 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
                 Some(mut op) = self.execute_chan_receiver.recv() => {
                     let now = timestamp();
                     let s = self.crdt.read();
-                    op.params.set_initial_context(now, s.clone());
+                    let mut hasher = DefaultHasher::new();
+                    s.hash(&mut hasher);
+                    op.params.set_initial_context(now, hasher.finish());
 
                     self.issue_operation(op, &out_chan).await;
                 }

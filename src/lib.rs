@@ -35,23 +35,22 @@ fn date() -> String {
 }
 
 pub trait OperationParameterWithInitialContext: OperationParameter {
-    type S;
 
-    fn get_initial_context(&self) -> (u128, Self::S);
-    fn set_initial_context(&mut self, time: u128, context: Self::S);
+    fn get_initial_context(&self) -> (u128, u64);
+    fn set_initial_context(&mut self, time: u128, context_hash: u64);
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
     pub struct CommandsParameter {
         time: u128,
-        initial_context: Vec<Operation<CommandsParameter>>,
+        initial_context_hash: u64,
     }
 
     impl Default for CommandsParameter {
         fn default() -> Self {
             CommandsParameter {
                 time: timestamp(),
-                initial_context: vec![],
+                initial_context_hash: 0,
             }
         }
     }
@@ -59,15 +58,14 @@ pub trait OperationParameterWithInitialContext: OperationParameter {
 impl OperationParameter for CommandsParameter {}
 
 impl OperationParameterWithInitialContext for CommandsParameter {
-    type S = Vec<Operation<CommandsParameter>>;
 
-    fn get_initial_context(&self) -> (u128, Vec<Operation<CommandsParameter>>) {
-        (self.time, self.initial_context.clone())
+    fn get_initial_context(&self) -> (u128, u64) {
+        (self.time, self.initial_context_hash)
     }
 
-    fn set_initial_context(&mut self, time: u128, context: Vec<Operation<CommandsParameter>>) {
-        self.initial_context = context;
+    fn set_initial_context(&mut self, time: u128, context: u64) {
         self.time = time;
+        self.initial_context_hash = context;
     }
 }
 
@@ -139,8 +137,6 @@ pub async fn run() {
 
     let compute_metrics_task = tokio::spawn(async move {
         let mut metrics: HashMap<Operation<CommandsParameter>, (u128, u32, Vec<Operation<CommandsParameter>>)> = HashMap::new(); // last moved time, reordering count, previous context
-
-        // TODO initial context need to be flatten to just ids to avoid recursive structures: solution is to hash the context?
 
         loop {
             select! {
