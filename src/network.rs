@@ -1,9 +1,9 @@
 use serde::de::DeserializeOwned;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, join};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{Sender, Receiver};
 
-use crate::config::Config;
+use crate::config::{Config, Peer};
 use crate::crdt::OperationParameter;
 use crate::process::CRDTOperationMessage;
 
@@ -15,42 +15,71 @@ pub async fn run<P>(config: &Config) -> (Sender<CRDTOperationMessage<P>>, Receiv
     let ip = config.ip.clone();
     let peers = config.peers.clone();
 
-    let accept_con_taks = tokio::spawn(async move {
-        accept_connections(ip, peers_to_local_sender).await;
-    });
+    let (listening_tasks, out_peers) = tokio::join!(accept_connections(ip, peers_to_local_sender, peers.len()), connect_to_peers(peers));
 
-    let mut out_peers = vec![];
-    for peer in peers {  // TODO dynamicly add/remove peers
-        let stream = TcpStream::connect(peer.ip).await;    
-        match stream {
-            Ok(stream) => out_peers.push(stream),
-            Err(_) => println!("Failed to connect to peer"),// TODO handle failure
-        }
-    }
+    let network_task = tokio::spawn( async { 
+        tokio::join!(
+            async {
+                for task in listening_tasks {
+                    task.await.unwrap();
+                }
+            },
+            talk(local_to_peers_receiver, out_peers),
+    );});
 
-    let talk_task = tokio::spawn(async move {
-        talk(local_to_peers_receiver, out_peers).await;
-    });
-
-    let network_task = tokio::spawn(async move {
-        tokio::join!(accept_con_taks, talk_task);
-    });
     (local_to_peers_sender, peers_to_local_receiver, network_task)
 }
 
-async fn accept_connections<P>(ip: String, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned {
+async fn accept_connections<P>(ip: String, peers_to_local_sender: Sender<CRDTOperationMessage<P>>, nb: usize) -> Vec<tokio::task::JoinHandle<()>> where P: OperationParameter + DeserializeOwned {
     let listener = TcpListener::bind(ip).await.unwrap();
-    loop {
-        match listener.accept().await {
-            Ok((stream, _)) => { 
-                let peers_to_local_sender = peers_to_local_sender.clone();
-                tokio::spawn(async move {
-                    listen_peer(stream, peers_to_local_sender).await;
-                });
-            },
-            Err(e) => println!("Accept connection failed: {:?}", e),
+    let mut listening_tasks = vec![];
+
+    for _ in 0..nb {
+        loop {
+            match listener.accept().await {
+                    Ok((stream, _)) => { 
+                        let peers_to_local_sender = peers_to_local_sender.clone();
+                        listening_tasks.push(tokio::spawn(async move {
+                            listen_peer(stream, peers_to_local_sender).await;
+                        }));
+                        break;
+                    },
+                    Err(e) => println!("Accept connection failed: {:?}", e),
+            }
         }
     }
+
+    return listening_tasks;
+}
+
+async fn connect_to_peers(peers: Vec<Peer>) -> Vec<TcpStream> {
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await; // wait a bit to let peers start listening
+
+    let mut handles = vec![];
+
+    for peer in peers {
+        handles.push(tokio::spawn(async move {
+            let mut stream = TcpStream::connect(peer.ip.clone()).await;
+            loop {
+                match stream {
+                    Ok(stream) => { return stream; },
+                    Err(e) => { 
+                        println!("Error connecting to peer {}: {}. Retrying...", peer.ip, e);
+                        stream = TcpStream::connect(peer.ip.clone()).await; 
+                    },
+                }
+            }
+        }));
+    }
+
+    let mut out_peers = vec![];
+
+    for handle in handles {     // "join all"
+        let stream = handle.await.unwrap();
+        out_peers.push(stream);
+    }
+
+    return out_peers;
 }
 
 async fn listen_peer<P>(mut stream: TcpStream, peers_to_local_sender: Sender<CRDTOperationMessage<P>>) where P: OperationParameter + DeserializeOwned {
