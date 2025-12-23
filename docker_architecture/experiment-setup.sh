@@ -64,7 +64,7 @@ EOF
       - "$port_host:4444"
     volumes:
         - ./process$id:/etc/experiment:rw
-    command: sh -c "tc qdisc add dev eth0 root netem delay 100ms 10000ms distribution normal && /usr/bin/experiment/crdt | tee process$id.log"
+    command: sh -c "tc qdisc add dev eth0 root netem delay 100ms 10000ms distribution normal && /usr/bin/experiment/crdt 2>&1 | tee process$id.log"
     user: ${USER_DOCKER}
     working_dir: /etc/experiment
 
