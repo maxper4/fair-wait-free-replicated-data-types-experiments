@@ -101,7 +101,7 @@ pub async fn run() {
     let process_executor = process.execute_chan_sender.clone();
 
     let process_task = tokio::spawn(async move {
-                process.run_with_initial_context(to_network_chan).await;
+                process.run_with_initial_context(&to_network_chan).await;
             });
 
     let execute_task = async move {
@@ -138,27 +138,24 @@ pub async fn run() {
     let (to_control_metrics_chan, mut control_metrics) : (Sender<u8>, tokio::sync::mpsc::Receiver<u8>) = tokio::sync::mpsc::channel(10);
 
     let compute_metrics_task = tokio::spawn(async move {
-        let mut last_moved: HashMap<Operation<CommandsParameter>, u128> = HashMap::new();
-        let mut reodering_count: HashMap<Operation<CommandsParameter>, u32> = HashMap::new();
-        let mut previous_contexts: HashMap<Operation<CommandsParameter>, Vec<Operation<CommandsParameter>>> = HashMap::new();
-// TODO optimize into one hashmap
-// TODO initial context need to be flatten to just ids to avoid recursive structures: solution is to hash the context?
+        let mut metrics: HashMap<Operation<CommandsParameter>, (u128, u32, Vec<Operation<CommandsParameter>>)> = HashMap::new(); // last moved time, reordering count, previous context
+
+        // TODO initial context need to be flatten to just ids to avoid recursive structures: solution is to hash the context?
 
         loop {
             select! {
                 Some((state, now)) = from_metrics_chan.recv() => {
 
                     for i in 0..state.len() {
-                        if last_moved.get(&state[i]).is_none() {
-                            last_moved.insert(state[i].clone(), now);
-                            reodering_count.insert(state[i].clone(), 0);
-                            previous_contexts.insert(state[i].clone(), state[0..i].to_vec());
+                        if metrics.get(&state[i]).is_none() {
+                            metrics.insert(state[i].clone(), (state[i].params.time, 0, state[0..i].to_vec()));
                         } 
-                        else if previous_contexts.get(&state[i]).unwrap() != &state[0..i].to_vec() {
-                            last_moved.insert(state[i].clone(), now);
-                            reodering_count.entry(state[i].clone()).and_modify(|e| *e += 1);
-                            
-                            previous_contexts.insert(state[i].clone(), state[0..i].to_vec());
+                        else if metrics.get(&state[i]).unwrap().2 != state[0..i].to_vec() {
+                            metrics.entry(state[i].clone()).and_modify(|e| {
+                                e.0 = now;
+                                e.1 += 1;
+                                e.2 = state[0..i].to_vec();
+                            });
                         }
                     }
                 },
@@ -168,17 +165,17 @@ pub async fn run() {
             }
         }
 
-        let sum : u128 = last_moved.iter().map(|(op, time)| time - op.params.time).sum();
-        let avg = sum as f64 / last_moved.len() as f64;
+        let sum : u128 = metrics.iter().map(|(op, (time,_,_))| time - op.params.time).sum();
+        let avg = sum as f64 / metrics.len() as f64;
 
-        println!("Average time for process {}: {} seconds over {} operations.", config.id, avg / 1000000 as f64, last_moved.len());
+        println!("Average time for process {}: {} seconds over {} operations.", config.id, avg / 1000000 as f64, metrics.len());
 
-        let total_reorderings : u32 = reodering_count.iter().map(|(_, count)| *count).sum();
-        let avg_reorderings = total_reorderings as f64 / reodering_count.len() as f64;
-        println!("Average reorderings for process {} by operation: {}.", config.id, avg_reorderings);
+        let total_reorderings : u32 = metrics.iter().map(|(_, (_, count, _))| *count).sum();
+        let avg_reorderings = total_reorderings as f64 / metrics.len() as f64;
+        println!("Average reorderings by operation for process {}: {}.", config.id, avg_reorderings);
 
-        let fairly_stabilized : u32 = reodering_count.iter().filter(|(_, count)| **count == 0).count() as u32;  // TODO need to compare final context with initial context stored in the operation itself
-        println!("Number of fairly stabilized operations for process {}: {} out of {}.", config.id, fairly_stabilized, reodering_count.len());
+        let fairly_stabilized : u32 = metrics.iter().filter(|(_, (_, count, _))| *count == 0).count() as u32;  // TODO need to compare final context with initial context stored in the operation itself
+        println!("Number of fairly stabilized operations for process {}: {} out of {}.", config.id, fairly_stabilized, metrics.len());
     });
 
     tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await;

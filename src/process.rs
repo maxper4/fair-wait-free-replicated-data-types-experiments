@@ -89,55 +89,67 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
 
             crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
             println!("Process {} is in state {:?}", self.id, self.crdt.read());
-
         }
     }
+
+    async fn on_receive_external_message(&mut self, m: CRDTOperationMessage<P>) {
+        let v = m.vertex;
+        println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
+        while !self.crdt.append_with_causal_context(v, m.causal_context) {
+            println!("Process {} cannot yet apply {}, retrying later.", self.id, v.label.op.id);
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        let metrics_chan = self.metrics_out_chan.clone();
+        let s = self.crdt.read().clone();
+        let now = timestamp();
+        tokio::spawn(async move {
+            metrics_chan.send((s, now)).await.unwrap();
+        });
+    }
+
+    async fn issue_operation(&mut self, op: Operation<P>) {
+        let now = timestamp();
+                    
+        match self.crdt.append(op.clone(), self.id) {
+            Ok(mut causal_context) => {
+                let local_id = causal_context.pop().unwrap();
+                let v = self.crdt.dag.get_vertex(&local_id).unwrap().clone();
+
+                println!("Process {} applied {}", self.id, op.id);
+
+                let out_clone = self.out_chan.clone();
+                out_clone.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
+
+                let metrics_chan = self.metrics_out_chan.clone();
+                let s = self.crdt.read();
+
+                tokio::spawn(async move {
+                    metrics_chan.send((s, now)).await.unwrap();
+                });
+            }
+            Err(e) => {
+                println!("Process {} cannot apply {}: {}", self.id, op.id, e);
+            }
+        }
+    }
+
 }
 
 impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParameterWithInitialContext<S=S> {
 
-    pub async fn run_with_initial_context(&mut self) {
+    pub async fn run_with_initial_context(&mut self, out_chan: Sender<CRDTOperationMessage<P>>) {
         loop {
             select! {
                 Some(m) = self.in_chan.recv() => {
-                    let v = m.vertex;
-                    println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
-                    self.crdt.append_with_causal_context(v, m.causal_context);
-
-                    let metrics_chan = self.metrics_out_chan.clone();
-                    let s = self.crdt.read().clone();
-                    let now = timestamp();
-                    tokio::spawn(async move {
-                        metrics_chan.send((s, now)).await.unwrap();
-                    });
+                    self.on_receive_external_message(m, &out_chan).await;
                 }
                 Some(mut op) = self.execute_chan_receiver.recv() => {
                     let now = timestamp();
                     let s = self.crdt.read();
                     op.params.set_initial_context(now, s.clone());
 
-                    match self.crdt.append(op.clone(), self.id) {
-                        Ok(mut causal_context) => {
-                            let local_id = causal_context.pop().unwrap();
-                            let v = self.crdt.dag.get_vertex(&local_id).unwrap().clone();
-
-                            println!("Process {} applied {}", self.id, op.id);
-
-                            let out_clone = self.out_chan.clone();
-                            tokio::spawn(async move {
-                                out_clone.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
-                            });
-
-                            let metrics_chan = self.metrics_out_chan.clone();
-
-                            tokio::spawn(async move {
-                                metrics_chan.send((s, now)).await.unwrap();
-                            });
-                        }
-                        Err(e) => {
-                            println!("Process {} cannot apply {}: {}", self.id, op.id, e);
-                        }
-                    }
+                    self.issue_operation(op, &out_chan).await;
                 }
             }
 
@@ -159,31 +171,6 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
 
             crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
             println!("Process {} is in state {:?}", self.id, self.crdt.read());
-        }
-    }
-
-    fn on_receive_external_message(&mut self, m: CRDTOperationMessage<P>) -> bool {   // TODO this should run in the background to allow appending the causal past received later
-        let v = m.vertex;
-        println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
-        self.crdt.append_with_causal_context(v.clone(), m.causal_context.clone())
-    }
-
-    async fn issue_operation(&mut self, op: Operation<P>, out_chan: &Sender<CRDTOperationMessage<P>>) {
-        match self.crdt.append(op.clone(), self.id) {
-            Ok(mut causal_context) => {
-                let local_id = causal_context.pop().unwrap();
-                let v = self.crdt.dag.get_vertex(&local_id).unwrap().clone();
-
-                println!("Process {} applied {}", self.id, op.id);
-                
-                match out_chan.send(CRDTOperationMessage::new(v, causal_context)).await {
-                    Ok(_) => (),
-                    Err(e) => println!("Process {} cannot send {} to network: {}", self.id, op.id, e),
-                }
-            }
-            Err(e) => {
-                println!("Process {} cannot apply {}: {}", self.id, op.id, e);
-            }
         }
     }
 }
