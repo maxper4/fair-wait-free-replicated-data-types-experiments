@@ -84,8 +84,6 @@ pub async fn run() {
         state
     }
 
-    
-
     fn commands_order(v1: &Vertex<VertexLabel<CommandsParameter>>, v2: &Vertex<VertexLabel<CommandsParameter>>) -> Ordering {
         match v1.label.op.id.cmp(&v2.label.op.id) {
             Ordering::Equal => v1.id.process_id.cmp(&v2.id.process_id),
