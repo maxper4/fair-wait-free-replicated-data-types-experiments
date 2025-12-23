@@ -76,7 +76,7 @@ pub async fn run() {
     println!("Process {} launched at {} for experiment type {}.", config.id, wakeup_time, config.experiment_type);
 
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
-    let (to_metrics_chan, mut from_metrics_chan) : (Sender<(Vec<Operation<CommandsParameter>>, u128)>, tokio::sync::mpsc::Receiver<(Vec<Operation<CommandsParameter>>, u128)>) = tokio::sync::mpsc::channel(100);
+    let (to_metrics_chan, mut from_metrics_chan) : (Sender<(Vec<Operation<CommandsParameter>>, u128, u128)>, tokio::sync::mpsc::Receiver<(Vec<Operation<CommandsParameter>>, u128, u128)>) = tokio::sync::mpsc::channel(100);
 
     fn mutate_commands(state: &Vec<Operation<CommandsParameter>>, op: &Operation<CommandsParameter>) -> Vec<Operation<CommandsParameter>> {
         let mut state = state.clone();
@@ -138,10 +138,12 @@ pub async fn run() {
 
     let compute_metrics_task = tokio::spawn(async move {
         let mut metrics: HashMap<Operation<CommandsParameter>, (u128, u32, Vec<Operation<CommandsParameter>>)> = HashMap::new(); // last moved time, reordering count, previous context
+        let mut computation_times: HashMap<usize, u128> = HashMap::new();
 
         loop {
             select! {
-                Some((state, now)) = from_metrics_chan.recv() => {
+                Some((state, now, duration)) = from_metrics_chan.recv() => {
+                    computation_times.insert(state.len(), duration);
 
                     for i in 0..state.len() {
                         let actual_context = state[0..i].to_vec();
@@ -167,7 +169,7 @@ pub async fn run() {
         let sum : u128 = metrics.iter().map(|(op, (time,_,_))| time - op.params.time).sum();
         let avg = sum as f64 / metrics.len() as f64;
 
-        println!("Average time for process {}: {} seconds over {} operations.", config.id, avg / 1000000 as f64, metrics.len());
+        println!("Average stabilization delay for process {}: {} seconds over {} operations.", config.id, avg / 1000000 as f64, metrics.len());
 
         let total_reorderings : u32 = metrics.iter().map(|(_, (_, count, _))| *count).sum();
         let avg_reorderings = total_reorderings as f64 / metrics.len() as f64;
@@ -178,6 +180,10 @@ pub async fn run() {
             final_context.hash(&mut hasher);
             return hasher.finish() == op.params.initial_context_hash } ).count() as u32;
         println!("Number of fairly stabilized operations for process {}: {} out of {}.", config.id, fairly_stabilized, metrics.len());
+
+        let sum : f64 = computation_times.iter().map(|(size, time)| *time as f64 / *size as f64).sum();
+        let avg = sum as f64 / computation_times.len() as f64;
+        println!("Average computation time per operation for process {}: {} microseconds.", config.id, avg);
     });
 
     tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await;

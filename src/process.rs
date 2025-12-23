@@ -38,11 +38,11 @@ pub struct Process<S: Clone+Debug+'static, P> where P: OperationParameter {
     in_chan: Receiver<CRDTOperationMessage<P>>,
     pub execute_chan_sender: Sender<Operation<P>>,
     execute_chan_receiver: Receiver<Operation<P>>,
-    metrics_out_chan: Sender<(S, u128)>,
+    metrics_out_chan: Sender<(S, u128, u128)>,
 }
 
 impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParameter {
-    pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>, metrics_out_chan: &Sender<(S,u128)>) -> Process<S, P> {
+    pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>, metrics_out_chan: &Sender<(S,u128,u128)>) -> Process<S, P> {
         let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
 
         Process { 
@@ -102,16 +102,15 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
         }
 
         let metrics_chan = self.metrics_out_chan.clone();
-        let s = self.crdt.read().clone();
         let now = timestamp();
+        let s = self.crdt.read().clone();
+        let duration = timestamp() - now;
         tokio::spawn(async move {
-            metrics_chan.send((s, now)).await.unwrap();
+            metrics_chan.send((s, now, duration)).await.unwrap();
         });
     }
 
     async fn issue_operation(&mut self, op: Operation<P>) {
-        let now = timestamp();
-                    
         match self.crdt.append(op.clone(), self.id) {
             Ok(mut causal_context) => {
                 let local_id = causal_context.pop().unwrap();
@@ -123,10 +122,12 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
                 out_clone.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
 
                 let metrics_chan = self.metrics_out_chan.clone();
+                let now = timestamp();
                 let s = self.crdt.read();
+                let duration = timestamp() - now;
 
                 tokio::spawn(async move {
-                    metrics_chan.send((s, now)).await.unwrap();
+                    metrics_chan.send((s, now, duration)).await.unwrap();
                 });
             }
             Err(e) => {
