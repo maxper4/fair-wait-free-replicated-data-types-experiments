@@ -46,6 +46,7 @@ do
     peers+="]"
 
     port_host=$((4444+$id))
+    ipv4="192.167.0.$((id+1))"
     mkdir -p ./experiment/process$id
 cat << EOF > ./experiment/process$id/config.toml
 id = $id
@@ -72,6 +73,7 @@ EOF
       localnet:
         aliases:
           - process$id
+        ipv4_address: $ipv4
 
 EOF
 done
