@@ -72,8 +72,7 @@ impl OperationParameterWithInitialContext for CommandsParameter {
 
 pub async fn run() {
     let config = Config::get("config.toml");
-    let wakeup_time = timestamp();
-    println!("Process {} launched at {} for experiment type {}.", config.id, wakeup_time, config.experiment_type);
+    println!("Process {} launched at {} for experiment type {}.", config.id, date(), config.experiment_type);
 
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
     let (to_metrics_chan, mut from_metrics_chan) : (Sender<(Vec<Operation<CommandsParameter>>, u128, u128)>, tokio::sync::mpsc::Receiver<(Vec<Operation<CommandsParameter>>, u128, u128)>) = tokio::sync::mpsc::channel(100);
@@ -185,7 +184,7 @@ pub async fn run() {
 
     tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await.unwrap_err(); // experiment duration, after here the "talk" task is terminated
 
-    println!("Process {} finished experiment at {}.", config.id, timestamp());
+    println!("Process {} finished experiment at {}.", config.id, date());
 
     network_task.await;     // wait for all peers to finish their talking tasks, which terminates the listening tasks here
     println!("Process {} network tasks stopped.", config.id);
@@ -194,5 +193,5 @@ pub async fn run() {
     to_control_metrics_chan.send(0).await.unwrap();
     compute_metrics_task.await.unwrap();
 
-    println!("Process {} stopped at {}.", config.id, timestamp());
+    println!("Process {} stopped at {}.", config.id, date());
 }
