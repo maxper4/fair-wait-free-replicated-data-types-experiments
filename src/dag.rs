@@ -63,9 +63,9 @@ impl<T> Dag<T> where T: Clone {
         }
     }
 
-    pub fn add_vertex(&mut self, parents: Vec<VertexId>, mut v: Vertex<T>) {
+    pub fn add_vertex(&mut self, parents: Vec<VertexId>, mut v: Vertex<T>) {// TODO: delay until parents exist
         if v.distance == 0 {
-            v.distance = parents.iter().map(|p| self.get_vertex(p).unwrap().distance).max().unwrap_or(0) + 1;
+            v.distance = parents.iter().map(|p| self.get_vertex(p).unwrap_or_else(|| self.get_root()).distance).max().unwrap_or(0) + 1;
         }
 
         if self.length < v.distance {
