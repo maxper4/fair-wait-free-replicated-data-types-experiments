@@ -6,6 +6,7 @@ mod config;
 mod network;
 
 use std::cmp::Ordering;
+use std::time::SystemTime;
 use std::vec;
 
 use crdt::{Operation, OperationParameter, VertexLabel, CRDT};
@@ -17,6 +18,12 @@ use config::Config;
 use tokio::sync::mpsc::Sender;
 
 use crate::process::{CRDTOperationMessage, Process};
+
+fn date() -> String {
+    let now = SystemTime::now();
+    let datetime: chrono::DateTime<chrono::Utc> = now.into();
+    datetime.format("%H:%M:%S%.6f").to_string()
+}
 
 pub async fn run() {
     let config = Config::get("config.toml");
@@ -43,5 +50,9 @@ pub async fn run() {
     });
 
     // TODO: here execute ops
-    tokio::join!(network_task, process_task, execute_task);
+    execute_task.await.unwrap();
+
+    network_task.await;     // wait for all peers to finish their talking tasks, which terminates the listening tasks here
+    println!("Process {} network tasks stopped.", config.id);
+    process_task.await.unwrap();    // wait to finish processing all messages received (pending in the asynchronous channel from network to process)
 }
