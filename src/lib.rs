@@ -8,15 +8,15 @@ mod network;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::SystemTime;
+use std::fmt::Debug;
 use std::vec;
 use rand::{Rng, SeedableRng, rngs::StdRng};
-use std::time::{Duration, SystemTime};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crdt::{Operation, OperationParameter, VertexLabel, CRDT};
 use crdt::reconciliation_functions::{basic_exploration, fair_reconciliation_no_n};
 use crdt::legal_functions::total;
-use dag::{Dag, Vertex, VertexId};
+use dag::{Dag, Vertex};
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -94,12 +94,11 @@ pub async fn run() {
     stable_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
 
     let commands = CRDT::new(vec![], mutate_commands, stable_commands_reconciliation, total);
-    let mut process = Process::new(config.id, &commands, from_network_chan, &to_metrics_chan);
-    let process_executor = process.execute_chan_sender.clone();
+    let (mut process, process_executor) = Process::new(config.id, &commands, from_network_chan, &to_metrics_chan);
 
     let process_task = tokio::spawn(async move {
-                process.run_with_initial_context(&to_network_chan).await;
-            });
+            process.run_with_initial_context(to_network_chan).await;
+        });
 
     let execute_task = async move {
         let mut counter = 1;
@@ -132,7 +131,7 @@ pub async fn run() {
         
     };
 
-    let (to_control_metrics_chan, mut control_metrics) : (Sender<u8>, tokio::sync::mpsc::Receiver<u8>) = tokio::sync::mpsc::channel(10);
+    let (to_control_metrics_chan, mut control_metrics) : (Sender<u8>, tokio::sync::mpsc::Receiver<u8>) = tokio::sync::mpsc::channel(1);
 
     let compute_metrics_task = tokio::spawn(async move {
         let mut metrics: HashMap<Operation<CommandsParameter>, (u128, u32, Vec<Operation<CommandsParameter>>)> = HashMap::new(); // last moved time, reordering count, previous context
@@ -184,14 +183,14 @@ pub async fn run() {
         println!("Average computation time per operation for process {}: {} microseconds.", config.id, avg);
     });
 
-    tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await;
+    tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await.unwrap_err(); // experiment duration, after here the "talk" task is terminated
 
     println!("Process {} finished experiment at {}.", config.id, timestamp());
 
     network_task.await;     // wait for all peers to finish their talking tasks, which terminates the listening tasks here
     println!("Process {} network tasks stopped.", config.id);
     process_task.await.unwrap();    // wait to finish processing all messages received (pending in the asynchronous channel from network to process)
-    
+
     to_control_metrics_chan.send(0).await.unwrap();
     compute_metrics_task.await.unwrap();
 
