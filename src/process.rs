@@ -22,19 +22,17 @@ pub struct Process<S: Clone, P> where S: Debug, P: OperationParameter {
     pub id: u32,
     pub crdt: CRDT<S, P>,
     in_chan: Receiver<CRDTOperationMessage<P>>,
-    out_chan: Sender<CRDTOperationMessage<P>>,
     pub execute_chan_sender: Sender<Operation<P>>,
     execute_chan_receiver: Receiver<Operation<P>>,
 }
 
 impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
-    pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>, out_chan: &Sender<CRDTOperationMessage<P>>) -> Process<S, P> {
+    pub fn new(id: u32, crdt: &CRDT<S, P>, in_chan: Receiver<CRDTOperationMessage<P>>) -> Process<S, P> {
         let (execute_chan_sender, execute_chan_receiver) = tokio::sync::mpsc::channel(100);
         Process { 
             id: id, 
             crdt: crdt.clone(),
             in_chan: in_chan,
-            out_chan: out_chan.clone(),
             execute_chan_sender: execute_chan_sender,
             execute_chan_receiver: execute_chan_receiver,
         }
