@@ -68,7 +68,10 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
 
                 println!("Process {} applied {}", self.id, op.id);
                 
-                out_chan.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
+                match out_chan.send(CRDTOperationMessage::new(v, causal_context)).await {
+                    Ok(_) => (),
+                    Err(e) => println!("Process {} cannot send {} to network: {}", self.id, op.id, e),
+                }
             }
             Err(e) => {
                 println!("Process {} cannot apply {}: {}", self.id, op.id, e);
