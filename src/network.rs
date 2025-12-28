@@ -148,12 +148,12 @@ async fn talk<P>(mut local_to_peers_receiver: Receiver<CRDTOperationMessage<P>>,
                                 Ok(()) => {
                                 },
                                 Err(e) => {
-                                    println!("Error sending message to peer {}: {}", peer.peer_addr().unwrap(), e);
+                                    println!("Error sending message: {}", e);
                                 }
                            }
                        },
                        Err(e) => {
-                           println!("Error sending message length to peer {}: {}", peer.peer_addr().unwrap(), e);
+                           println!("Error sending message length: {}", e);
                         }
                     }
                 }
