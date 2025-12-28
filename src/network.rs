@@ -97,10 +97,10 @@ async fn listen_peer<P>(mut stream: TcpStream, peers_to_local_sender: Sender<CRD
                 break;
             },
             Ok(len) => {
-                let mut buf = vec![0; len as usize];
                 println!("Expecting to read {} bytes from peer {}", len, addr);
+                let mut buf = vec![0; len as usize];
 
-                match stream.read(&mut buf).await {
+                match stream.read_exact(&mut buf).await {
                     Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                         println!("Connection closed by peer {}", addr);
                         break;
