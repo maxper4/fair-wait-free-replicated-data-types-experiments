@@ -34,11 +34,11 @@ pub async fn run() {
     }
 
     let counter = CRDT::new(0, mutate_counter, basic_exploration, total);
-    let mut process = Process::new(config.id, &counter, from_network_chan, &to_network_chan);
+    let mut process = Process::new(config.id, &counter, from_network_chan);
     let process_executor = process.execute_chan_sender.clone();
 
     let process_task = tokio::spawn(async move {
-                process.run().await;
+                process.run(to_network_chan).await;
             });
 
     let execute_task = tokio::spawn(async move {
