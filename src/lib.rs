@@ -84,14 +84,14 @@ pub async fn run() {
 
     order_based_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
     // adding concurrency for debugging
-    let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
-    concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 0)));  // no concurrent, 0 stays
-    concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, (), 0)));
-    concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 0)));  // concurrent, 1 wins
-    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(0, (), 0)));
-    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(1, (), 0)));
-    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(0, (), 0))); 
-    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(1, (), 0)));   // 4 concurrent, [1, 1] wins
+    let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, ()));
+    concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 1), VertexLabel::new(0, ())));  // no concurrent, 0 stays
+    concurrent_set_dag.add_vertex(vec![VertexId::new(1, 1)], Vertex::new(VertexId::new(2, 1), VertexLabel::new(1, ())));
+    concurrent_set_dag.add_vertex(vec![VertexId::new(1, 1)], Vertex::new(VertexId::new(3, 2), VertexLabel::new(0, ())));  // concurrent, 1 wins
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 1), VertexId::new(3, 2)], Vertex::new(VertexId::new(4, 1), VertexLabel::new(0, ())));
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 1), VertexId::new(3, 2)], Vertex::new(VertexId::new(5, 2), VertexLabel::new(1, ())));
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 1), VertexId::new(3, 2)], Vertex::new(VertexId::new(6, 3), VertexLabel::new(0, ()))); 
+    concurrent_set_dag.add_vertex(vec![VertexId::new(2, 1), VertexId::new(3, 2)], Vertex::new(VertexId::new(7, 4), VertexLabel::new(1, ())));   // 4 concurrent, [1, 1] wins
     
     fn mutate_debug(state: &Vec<usize>, op: &Operation<()>) -> Vec<usize> {
         let mut state = state.clone();
@@ -107,24 +107,24 @@ pub async fn run() {
         vec![true, true]
     ];
     // adding concurrency for debugging
-    let mut fair_concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, (), 0));
-    fair_concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, (), 1)));  // no concurrent, 0 stays
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(2, 0), VertexLabel::new(1, (), 2)));
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 0)], Vertex::new(VertexId::new(3, 0), VertexLabel::new(0, (), 1)));  // concurrent, 1 wins (id higher)
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(4, 0), VertexLabel::new(1, (), 2))); //p2 is rollbacked => score of 1
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 0), VertexId::new(3, 0)], Vertex::new(VertexId::new(5, 0), VertexLabel::new(0, (), 1))); // concurrent, 0 wins (score higher)
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(6, 0), VertexLabel::new(1, (), 2)));
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(7, 0), VertexLabel::new(0, (), 1))); 
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 0), VertexId::new(5, 0)], Vertex::new(VertexId::new(8, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins (score higher)  (p1:1, p3:1) 
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(9, 0), VertexLabel::new(0, (), 2)));
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(10, 0), VertexLabel::new(0, (), 1))); 
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 0), VertexId::new(7, 0), VertexId::new(8, 0)], Vertex::new(VertexId::new(11, 0), VertexLabel::new(1, (), 3))); // 3 concurrent, 1 (p3) wins (p1: 2, p2: 1, p3:0)
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(12, 0), VertexLabel::new(0, (), 2)));
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(13, 0), VertexLabel::new(1, (), 1))); 
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 0), VertexId::new(10, 0), VertexId::new(11, 0)], Vertex::new(VertexId::new(14, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p1) wins (p1: 0, p2: 2, p3: 1)
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(15, 0), VertexLabel::new(1, (), 2)));
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(16, 0), VertexLabel::new(0, (), 1))); 
-    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 0), VertexId::new(13, 0), VertexId::new(14, 0)], Vertex::new(VertexId::new(17, 0), VertexLabel::new(0, (), 3))); // 3 concurrent, 1 (p2) wins
+    let mut fair_concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, ()));
+    fair_concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 1), VertexLabel::new(0, ())));  // no concurrent, 0 stays
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 1)], Vertex::new(VertexId::new(2, 2), VertexLabel::new(1, ())));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(1, 1)], Vertex::new(VertexId::new(3, 1), VertexLabel::new(0, ())));  // concurrent, 1 wins (id higher)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 2), VertexId::new(3, 1)], Vertex::new(VertexId::new(4, 2), VertexLabel::new(1, ()))); //p2 is rollbacked => score of 1
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(2, 2), VertexId::new(3, 1)], Vertex::new(VertexId::new(5, 1), VertexLabel::new(0, ()))); // concurrent, 0 wins (score higher)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 2), VertexId::new(5, 1)], Vertex::new(VertexId::new(6, 2), VertexLabel::new(1, ())));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 2), VertexId::new(5, 1)], Vertex::new(VertexId::new(7, 1), VertexLabel::new(0, ()))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(4, 2), VertexId::new(5, 1)], Vertex::new(VertexId::new(8, 3), VertexLabel::new(0, ()))); // 3 concurrent, 1 (p2) wins (score higher)  (p1:1, p3:1) 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 2), VertexId::new(7, 1), VertexId::new(8, 3)], Vertex::new(VertexId::new(9, 2), VertexLabel::new(0, ())));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 2), VertexId::new(7, 1), VertexId::new(8, 3)], Vertex::new(VertexId::new(10, 1), VertexLabel::new(0, ()))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(6, 2), VertexId::new(7, 1), VertexId::new(8, 3)], Vertex::new(VertexId::new(11, 3), VertexLabel::new(1, ()))); // 3 concurrent, 1 (p3) wins (p1: 2, p2: 1, p3:0)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 2), VertexId::new(10, 1), VertexId::new(11, 3)], Vertex::new(VertexId::new(12, 2), VertexLabel::new(0, ())));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 2), VertexId::new(10, 1), VertexId::new(11, 3)], Vertex::new(VertexId::new(13, 1), VertexLabel::new(1, ()))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(9, 2), VertexId::new(10, 1), VertexId::new(11, 3)], Vertex::new(VertexId::new(14, 3), VertexLabel::new(0, ()))); // 3 concurrent, 1 (p1) wins (p1: 0, p2: 2, p3: 1)
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 2), VertexId::new(13, 1), VertexId::new(14, 3)], Vertex::new(VertexId::new(15, 2), VertexLabel::new(1, ())));
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 2), VertexId::new(13, 1), VertexId::new(14, 3)], Vertex::new(VertexId::new(16, 1), VertexLabel::new(0, ()))); 
+    fair_concurrent_set_dag.add_vertex(vec![VertexId::new(12, 2), VertexId::new(13, 1), VertexId::new(14, 3)], Vertex::new(VertexId::new(17, 3), VertexLabel::new(0, ()))); // 3 concurrent, 1 (p2) wins
 
     let seq = fair_reconciliation_no_n(&fair_concurrent_set_dag, &vec![], mutate_debug);
     println!("Fair concurrent Set {:?}", seq);  // should be [0, 1, 0, 1, 1, 1, 1]

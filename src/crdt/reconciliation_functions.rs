@@ -59,7 +59,7 @@ where P: OperationParameter, S: Clone {
         }
         explored.insert(current, true);
         state = mutate(&state, &dag.get_vertex(&current).unwrap().label.op);
-        counter.insert(dag.get_vertex(&current).unwrap().label.process_id, counter.get(&dag.get_vertex(&current).unwrap().label.process_id).unwrap_or(&0) + 1);
+        counter.insert(dag.get_vertex(&current).unwrap().id.process_id, counter.get(&dag.get_vertex(&current).unwrap().id.process_id).unwrap_or(&0) + 1);
 
         let mut alive = dag.future(&current).iter().map(|v| v.process_id).collect::<Vec<_>>();
         alive.sort();
