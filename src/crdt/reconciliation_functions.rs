@@ -67,8 +67,8 @@ where P: OperationParameter, S: Clone {
         if alive.len() == 0 {
             break; // no more future vertices
         }
-        let min = alive.iter().map(|p| counter[p]).min().unwrap_or(0);
-        let starving = alive.iter().filter(|p| counter[p] == min).collect::<Vec<_>>();
+        let min = alive.iter().map(|p| *counter.get(p).unwrap_or(&0)).min().unwrap_or(0);
+        let starving = alive.iter().filter(|p| *counter.get(p).unwrap_or(&0) == min).collect::<Vec<_>>();
         candidates = vec![*dag.first_from_processes(&current, &starving)];
     }
 
