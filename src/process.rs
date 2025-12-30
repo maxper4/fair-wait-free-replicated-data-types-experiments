@@ -57,7 +57,9 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
     async fn on_receive_external_message(&mut self, m: CRDTOperationMessage<P>) {
         let v = m.vertex;
         println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
-        self.crdt.append_with_causal_context(v, m.causal_context);
+        while !self.crdt.append_with_causal_context(v.clone(), m.causal_context.clone()) {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
     }
 
     async fn issue_operation(&mut self, op: Operation<P>, out_chan: &Sender<CRDTOperationMessage<P>>) {

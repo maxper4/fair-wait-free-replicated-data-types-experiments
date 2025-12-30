@@ -79,8 +79,8 @@ impl <S: Clone, P: OperationParameter> CRDT<S, P> {
         Ok(heads)
     }
 
-    pub fn append_with_causal_context(&mut self, vertex: Vertex<VertexLabel<P>>, causal_context: Vec<VertexId>) {
-        self.dag.add_vertex(causal_context, vertex);
+    pub fn append_with_causal_context(&mut self, vertex: Vertex<VertexLabel<P>>, causal_context: Vec<VertexId>) -> bool {
+        self.dag.add_vertex(causal_context, vertex)
     }
 
     pub fn read(&self) -> S {
