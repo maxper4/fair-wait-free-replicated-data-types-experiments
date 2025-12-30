@@ -63,7 +63,13 @@ impl<T> Dag<T> where T: Clone {
         }
     }
 
-    pub fn add_vertex(&mut self, parents: Vec<VertexId>, mut v: Vertex<T>) {// TODO: delay until parents exist
+    pub fn add_vertex(&mut self, parents: Vec<VertexId>, mut v: Vertex<T>) -> bool {
+        for p in &parents {
+            if !self.contains_vertex(p) {
+                return false;
+            }
+        }
+
         if v.distance == 0 {
             v.distance = parents.iter().map(|p| self.get_vertex(p).unwrap_or_else(|| self.get_root()).distance).max().unwrap_or(0) + 1;
         }
@@ -75,25 +81,14 @@ impl<T> Dag<T> where T: Clone {
         self.vertices.push(v);
         let v = &self.vertices[self.vertices.len() - 1];
         let parents_len = parents.len();
-        for v2 in parents { // TODO: check if the parent exists
-            //let e = Edge::new(v, &self.vertices[v2 as usize]);
-            let parents = self.edges.get_mut(&v.id);
-            match parents {
+        let current_parents = self.edges.get_mut(&v.id);
+
+        if parents_len == 0 {
+            match current_parents {
                 Some(p) => {
-                    p.push(v2);
-                },
-                None => {
-                    self.edges.insert(v.id, vec![v2]);
-                }
-                
-            }
-        }
-        if parents_len == 0 {  // if no parent just add an edge to the root
-            //let e = Edge::new(v, &self.vertices[0]);
-            let parents = self.edges.get_mut(&v.id);
-            match parents {
-                Some(p) => {
-                    p.push(VertexId::new(0, 0));
+                    if p.len() == 0 {
+                        p.push(VertexId::new(0, 0));
+                    }
                 },
                 None => {
                     self.edges.insert(v.id, vec![VertexId::new(0, 0)]);
@@ -101,10 +96,36 @@ impl<T> Dag<T> where T: Clone {
                 
             }
         }
+        else {
+            match current_parents {
+                Some(p) => {
+                    for v2 in &parents {
+                        if !p.contains(v2) {
+                            p.push(*v2);
+                        }
+                    }
+                },
+                None => {
+                    self.edges.insert(v.id, parents.clone());
+                }
+            }
+        }
+
+        true
     }
 
     pub fn get_root(&self) -> &Vertex<T> {
         &self.vertices[0]
+    }
+
+    pub fn contains_vertex(&self, id: &VertexId) -> bool {
+        for v in &self.vertices {
+            if v.id == *id {
+                return true;
+            }
+        }
+
+        false
     }
 
     pub fn get_vertex(&self, id: &VertexId) -> Option<&Vertex<T>> {
