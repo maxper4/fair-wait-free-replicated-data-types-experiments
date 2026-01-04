@@ -189,28 +189,12 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
                 }
                 else => {
                     println!("Panick avoided");
-                    return;
+                    break;
                 }
             }
 
-            let mut added = true;
-            while added {
-                added = false;
-                let mut i = 0;
-                while i < pending.len() {
-                    if self.on_receive_external_message(pending[i].clone()).await {
-                        println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
-                        pending.swap_remove(i);
-                        added = true;
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-            println!("Process {} exiting with {} pending messages", self.id, pending.len());
-
-            crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
-            println!("Process {} is in state {:?}", self.id, self.crdt.read());
+            //crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
+            //println!("Process {} is in state {:?}", self.id, self.crdt.read());
             if self.execute_chan_receiver.is_closed() { // no more operations to issue
                 break;
             }
@@ -222,10 +206,31 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
         drop(out_chan); // will only receive external messages now, allows to terminate nicely
 
         while let Some(m) = self.in_chan.recv().await {
-            self.on_receive_external_message(m).await;
+            if !self.on_receive_external_message(m.clone()).await{
+                println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
+                pending.push(m);
+            } else {
+                println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
+                let mut added = true;
+                while added {
+                    added = false;
+                    let mut i = 0;
+                    while i < pending.len() {
+                        if self.on_receive_external_message(pending[i].clone()).await {
+                            println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
+                            pending.swap_remove(i);
+                            added = true;
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+            }
 
             //crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
             //println!("Process {} is in state {:?}", self.id, self.crdt.read());                
         }
+
+        println!("Process {} exiting with {} pending messages", self.id, pending.len());
     }
 }
