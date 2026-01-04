@@ -39,27 +39,62 @@ impl <'a, S: Clone, P> Process<S, P> where S: Debug, P: OperationParameter {
     }
 
     pub async fn run(&mut self, out_chan: Sender<CRDTOperationMessage<P>>) {
+        let mut pending = vec![];
+
         loop {
             select! {
                 Some(m) = self.in_chan.recv() => {
-                    self.on_receive_external_message(m).await;
-                }
+                    if !self.on_receive_external_message(m.clone()) {
+                        println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
+                        pending.push(m);
+                    } else {
+                        println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
+                        let mut added = true;
+                        while added {
+                            added = false;
+                            let mut i = 0;
+                            while i < pending.len() {
+                                if self.on_receive_external_message(pending[i].clone()) {
+                                    println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
+                                    pending.swap_remove(i);
+                                    added = true;
+                                } else {
+                                    i += 1;
+                                }
+                            }
+                        }
+                    }
+                },
                 Some(op) = self.execute_chan_receiver.recv() => {
                     self.issue_operation(op, &out_chan).await;
                 }
             }
+
+            let mut added = true;
+            while added {
+                added = false;
+                let mut i = 0;
+                while i < pending.len() {
+                    if self.on_receive_external_message(pending[i].clone()) {
+                        println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
+                        pending.swap_remove(i);
+                        added = true;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            println!("Process {} exiting with {} pending messages", self.id, pending.len());
 
             crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
             println!("Process {} is in state {:?}", self.id, self.crdt.read());
         }
     }
 
-    async fn on_receive_external_message(&mut self, m: CRDTOperationMessage<P>) {
+    fn on_receive_external_message(&mut self, m: CRDTOperationMessage<P>) -> bool {   // TODO this should run in the background to allow appending the causal past received later
         let v = m.vertex;
         println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
-        while !self.crdt.append_with_causal_context(v.clone(), m.causal_context.clone()) {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
+        self.crdt.append_with_causal_context(v.clone(), m.causal_context.clone())
     }
 
     async fn issue_operation(&mut self, op: Operation<P>, out_chan: &Sender<CRDTOperationMessage<P>>) {
