@@ -16,14 +16,13 @@ impl VertexId {
 }
 
 impl fmt::Display for VertexId {
-    // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}{}", self.process_id, self.local_id)
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Vertex<T> where T: Clone{
+pub struct Vertex<T> where T: Clone {
     pub id: VertexId,
     pub label: T,
     pub distance: u32
@@ -35,27 +34,21 @@ impl <T>Vertex<T> where T: Clone {
     }
 }
 
-// #[derive(Debug, Clone, Copy)]
-// struct Edge<'a, T> {
-//     pub from: &'a Vertex<T>,
-//     pub to: &'a Vertex<T>,
-// }
-
-// impl<'a,T> Edge<'a, T> {
-//     fn new(from: &'a Vertex<T>, to: &'a Vertex<T>) -> Edge<'a, T> {
-//         Edge { from, to }
-//     }
-// }
+impl <T>fmt::Display for Vertex<T> where T: Clone {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Vertex: (id: {}, distance: {})", self.id, self.distance)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Dag<T> where T: Clone {
     vertices: Vec<Vertex<T>>,
-    edges: HashMap<VertexId, Vec<VertexId>>, // from -> to
+    edges: HashMap<VertexId, Vec<VertexId>>, // from -> to (to is the causal past of from)
     pub length: u32
 }
 
 impl<T> Dag<T> where T: Clone {
-    pub fn new(init: T) -> Dag< T> {
+    pub fn new(init: T) -> Dag<T> {
         Dag {
             vertices: vec![Vertex::new(VertexId::new(0, 0), init)],
             edges: HashMap::new(),
@@ -162,7 +155,8 @@ impl<T> Dag<T> where T: Clone {
                 heads.push(v.id);
              }
         }
-
+        let root = self.get_root().id;
+        heads.retain(|x| *x != root); // remove root from heads
         heads
     }
 
@@ -170,21 +164,29 @@ impl<T> Dag<T> where T: Clone {
         self.vertices.iter().map(|v| &v.id).collect()
     }
 
-    pub fn past(&self, v: &VertexId, explored: &HashMap<VertexId, bool>) -> Vec<VertexId> {
+    pub fn sorted_past(&self, start: Vec<&VertexId>, explored: &HashMap<VertexId, bool>) -> Vec<VertexId> {
+        let mut toexplore = vec![];
         let mut past = vec![];
-        let mut toexplore = self.get_edges_from_vertex(v);
+
+        for v in start.clone() {
+            toexplore.push(*v);
+        }
         let mut seen = explored.clone();
 
-        while toexplore.len() > 0 {
-            let head = toexplore.remove(0); // BFS
-            if !seen.contains_key(&head) {
-                past.push(head);
-                for parent in self.get_edges_from_vertex(&head) {
-                    if !seen.contains_key(&parent) {
+        while let Some(head) = toexplore.pop() {    // DFS
+            if !seen.get(&head).unwrap_or(&false) {
+                seen.insert(head, true);
+                past.push(head.clone());
+
+                let mut parents = self.get_edges_from_vertex(&head);
+                parents.sort_by(|x, y| (*x).cmp(y));
+
+                for parent in parents {
+                    if !seen.get(&parent).unwrap_or(&false) {
                         toexplore.push(parent);
-                        seen.insert(parent, true);
                     }
                 }
+                
             }
         }
         past.reverse();
@@ -194,16 +196,21 @@ impl<T> Dag<T> where T: Clone {
     pub fn future(&self, v: &VertexId) -> Vec<&VertexId> {
         let mut future = vec![];
         let mut toexplore = self.get_edges_to_vertex(v);
+        toexplore.sort_by(|x, y| (**x).cmp(*y));
         let mut seen = vec![v];
 
         while toexplore.len() > 0 {
             let head = toexplore.remove(0);
             if !seen.contains(&&head) {
+                seen.push(&head);
                 future.push(head);
-                for parent in self.get_edges_to_vertex(&head) {
+
+                let mut parents = self.get_edges_to_vertex(&head);
+                parents.sort_by(|x, y| (**x).cmp(*y));
+
+                for parent in parents {
                     if !seen.contains(&parent) {
                         toexplore.push(parent);
-                        seen.push(parent);
                     }
                 }
             }
@@ -214,19 +221,23 @@ impl<T> Dag<T> where T: Clone {
     pub fn processes_in_future(&self, v: &VertexId, n: u32) -> Vec<u32>{
         let mut processes = vec![];
         let mut toexplore = self.get_edges_to_vertex(v);
+        toexplore.sort_by(|x, y| (**x).cmp(*y));
         let mut seen = vec![v];
 
         while toexplore.len() > 0 && processes.len() < n as usize {
             let head = toexplore.remove(0);
             if !seen.contains(&&head) {
+                seen.push(&head);
                 if !processes.contains(&head.process_id) {
                     processes.push(head.process_id);
                 }
 
-                for parent in self.get_edges_to_vertex(&head) {
+                let mut parents = self.get_edges_to_vertex(&head);
+                parents.sort_by(|x, y| (**x).cmp(*y));
+
+                for parent in parents {
                     if !seen.contains(&parent) {
                         toexplore.push(parent);
-                        seen.push(parent);
                     }
                 }
             }
@@ -236,17 +247,23 @@ impl<T> Dag<T> where T: Clone {
 
     pub fn first_from_processes (&self, start: &VertexId, processes: &Vec<&u32>) -> &VertexId {
         let mut toexplore = self.get_edges_to_vertex(&start);
+        toexplore.sort_by(|x, y| (**x).cmp(*y));
+
         let mut seen = vec![start];
 
         while toexplore.len() > 0 {
             let head = toexplore.remove(0);
+            seen.push(&head);
+
             if processes.contains(&&head.process_id) {  // BFS until we find a vertex from one of the processes
                 return head;
             }
 
-            for child in self.get_edges_to_vertex(head) {
+            let mut children = self.get_edges_to_vertex(head);
+            children.sort_by(|x, y| (**x).cmp(*y));
+
+            for child in children {
                 if !seen.contains(&child) {
-                    seen.push(child);
                     toexplore.push(child);
                 }
             }
