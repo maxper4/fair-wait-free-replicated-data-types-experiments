@@ -90,9 +90,16 @@ pub async fn run() {
         }
     }
 
-    stable_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
-
-    let commands = CRDT::new(vec![], mutate_commands, stable_commands_reconciliation, total);
+    let reconciliation = match config.experiment_type {
+        1 => { 
+            stable_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
+            stable_commands_reconciliation 
+        },
+        2 => fair_reconciliation_no_n,
+        _ => fair_reconciliation_no_n,
+    };
+    
+    let commands = CRDT::new(vec![], mutate_commands, reconciliation, total);
     let (mut process, process_executor) = Process::new(config.id, &commands, from_network_chan, &to_metrics_chan);
 
     let process_task = tokio::spawn(async move {
@@ -174,7 +181,8 @@ pub async fn run() {
         let fairly_stabilized : u32 = metrics.iter().filter(|(op, (_, _, final_context))| { 
             let mut hasher = DefaultHasher::new();
             final_context.hash(&mut hasher);
-            return hasher.finish() == op.params.initial_context_hash } ).count() as u32;
+            let final_hash = hasher.finish();
+            return final_hash == op.params.initial_context_hash } ).count() as u32;
         println!("Number of fairly stabilized operations for process {}: {} out of {}.", config.id, fairly_stabilized, metrics.len());
 
         let sum : f64 = computation_times.iter().map(|(size, time)| *time as f64 / *size as f64).sum();

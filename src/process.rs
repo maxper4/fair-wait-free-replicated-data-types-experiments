@@ -128,7 +128,7 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
                 let local_id = causal_context.pop().unwrap();
                 let v = self.crdt.dag.get_vertex(&local_id).unwrap().clone();
 
-                println!("Process {} applied {}", self.id, op.id);
+                println!("Process {} applied {} in vertex {}", self.id, op.id, v.id);
                 
                 out_chan.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
 
@@ -181,6 +181,8 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
                 Some(mut op) = self.execute_chan_receiver.recv() => {
                     let now = timestamp();
                     let s = self.crdt.read();
+                    println!("Issuing {} at {} with context {:?}", op.id, now, s);
+
                     let mut hasher = DefaultHasher::new();
                     s.hash(&mut hasher);
                     op.params.set_initial_context(now, hasher.finish());
@@ -231,6 +233,6 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
             //println!("Process {} is in state {:?}", self.id, self.crdt.read());                
         }
 
-        println!("Process {} exiting with {} pending messages", self.id, pending.len());
+        println!("Exiting with {} pending messages and state: {:?}", pending.len(), self.crdt.read());
     }
 }
