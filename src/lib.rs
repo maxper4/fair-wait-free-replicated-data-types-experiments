@@ -172,11 +172,11 @@ pub async fn run() {
         let sum : u128 = metrics.iter().map(|(op, (time,_,_))| time - op.params.time).sum();
         let avg = sum as f64 / metrics.len() as f64;
 
-        println!("Average stabilization delay for process {}: {} seconds over {} operations.", config.id, avg / 1000000 as f64, metrics.len());
+        println!("Average stabilization delay for process {}: {:.3} seconds over {} operations.", config.id, avg / 1000000 as f64, metrics.len());
 
         let total_reorderings : u32 = metrics.iter().map(|(_, (_, count, _))| *count).sum();
         let avg_reorderings = total_reorderings as f64 / metrics.len() as f64;
-        println!("Average reorderings by operation for process {}: {}.", config.id, avg_reorderings);
+        println!("Average reorderings by operation for process {}: {:.3}.", config.id, avg_reorderings);
 
         let fairly_stabilized : u32 = metrics.iter().filter(|(op, (_, _, final_context))| { 
             let mut hasher = DefaultHasher::new();
@@ -187,7 +187,7 @@ pub async fn run() {
 
         let sum : f64 = computation_times.iter().map(|(size, time)| *time as f64 / *size as f64).sum();
         let avg = sum as f64 / computation_times.len() as f64;
-        println!("Average computation time per operation for process {}: {} microseconds.", config.id, avg);
+        println!("Average computation time per operation for process {}: {:.3} microseconds.", config.id, avg);
     });
 
     tokio::time::timeout(tokio::time::Duration::from_secs(config.duration), execute_task).await.unwrap_err(); // experiment duration, after here the "talk" task is terminated

@@ -83,7 +83,7 @@ where P: OperationParameter, S: Clone+Debug+Hash {
             explored.insert(p, true);
         }
 
-        println!("Z: {}, Leader: {:?}, with {}, before: {:?}", z, current.process_id, current, state);
+        //println!("Z: {}, Leader: {:?}, with {}, before: {:?}", z, current.process_id, current, state);
 
         explored.insert(current, true);
         state = mutate(&state, &dag.get_vertex(&current).unwrap().label.op);

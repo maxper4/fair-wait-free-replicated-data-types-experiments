@@ -59,17 +59,17 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
             select! {
                 Some(m) = self.in_chan.recv() => {
                     if !self.on_receive_external_message(m.clone()).await {
-                        println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
+                        // println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
                         pending.push(m);
                     } else {
-                        println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
+                        // println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
                         let mut added = true;
                         while added {
                             added = false;
                             let mut i = 0;
                             while i < pending.len() {
                                 if self.on_receive_external_message(pending[i].clone()).await {
-                                    println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
+                                    // println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
                                     pending.swap_remove(i);
                                     added = true;
                                 } else {
@@ -91,7 +91,7 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
                 let mut i = 0;
                 while i < pending.len() {
                     if self.on_receive_external_message(pending[i].clone()).await {
-                        println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
+                        // println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
                         pending.swap_remove(i);
                         added = true;
                     } else {
@@ -99,16 +99,16 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
                     }
                 }
             }
-            println!("Process {} exiting with {} pending messages", self.id, pending.len());
+            // println!("Process {} exiting with {} pending messages", self.id, pending.len());
 
-            crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
-            println!("Process {} is in state {:?}", self.id, self.crdt.read());
+            // crate::rendering::print_graph(&self.crdt.dag, format!("process_{}.png", self.id));
+            // println!("Process {} is in state {:?}", self.id, self.crdt.read());
         }
     }
 
     async fn on_receive_external_message(&mut self, m: CRDTOperationMessage<P>) -> bool {
         let v = m.vertex;
-        println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
+        // println!("Process {} received {} from {}", self.id, v.label.op.id, v.id.process_id);
         let success = self.crdt.append_with_causal_context(v, m.causal_context); 
         
         if success {
@@ -128,7 +128,7 @@ impl <'a, S: Clone+Debug+Send+'static, P> Process<S, P> where P: OperationParame
                 let local_id = causal_context.pop().unwrap();
                 let v = self.crdt.dag.get_vertex(&local_id).unwrap().clone();
 
-                println!("Process {} applied {} in vertex {}", self.id, op.id, v.id);
+                // println!("Process {} applied {} in vertex {}", self.id, op.id, v.id);
                 
                 out_chan.send(CRDTOperationMessage::new(v, causal_context)).await.unwrap();
 
@@ -158,17 +158,17 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
             select! {
                 Some(m) = self.in_chan.recv() => {
                     if !self.on_receive_external_message(m.clone()).await{
-                        println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
+                        // println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
                         pending.push(m);
                     } else {
-                        println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
+                        // println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
                         let mut added = true;
                         while added {
                             added = false;
                             let mut i = 0;
                             while i < pending.len() {
                                 if self.on_receive_external_message(pending[i].clone()).await {
-                                    println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
+                                    // println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
                                     pending.swap_remove(i);
                                     added = true;
                                 } else {
@@ -181,7 +181,7 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
                 Some(mut op) = self.execute_chan_receiver.recv() => {
                     let now = timestamp();
                     let s = self.crdt.read();
-                    println!("Issuing {} at {} with context {:?}", op.id, now, s);
+                    // println!("Issuing {} at {} with context {:?}", op.id, now, s);
 
                     let mut hasher = DefaultHasher::new();
                     s.hash(&mut hasher);
@@ -209,17 +209,17 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
 
         while let Some(m) = self.in_chan.recv().await {
             if !self.on_receive_external_message(m.clone()).await{
-                println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
+                // println!("Process {} cannot append {}, storing it in pending", self.id, m.vertex.label.op.id);
                 pending.push(m);
             } else {
-                println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
+                // println!("Process {} appended pending {}", self.id, m.vertex.label.op.id);
                 let mut added = true;
                 while added {
                     added = false;
                     let mut i = 0;
                     while i < pending.len() {
                         if self.on_receive_external_message(pending[i].clone()).await {
-                            println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
+                            // println!("Process {} appended pending {}", self.id, pending[i].vertex.label.op.id);
                             pending.swap_remove(i);
                             added = true;
                         } else {
@@ -233,6 +233,6 @@ impl <'a, S: Clone+Debug+Send+'static+Hash, P> Process<S, P> where P: OperationP
             //println!("Process {} is in state {:?}", self.id, self.crdt.read());                
         }
 
-        println!("Exiting with {} pending messages and state: {:?}", pending.len(), self.crdt.read());
+        // println!("Exiting with {} pending messages and state: {:?}", pending.len(), self.crdt.read());
     }
 }
