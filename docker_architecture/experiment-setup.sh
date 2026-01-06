@@ -10,6 +10,10 @@ for i in "$@"; do
       e="${i#*=}"
       shift # past argument=value
       ;;
+    -d=*|--duration=*)
+      d="${i#*=}"
+      shift # past argument=value
+      ;;
     -*|--*)
       echo "Unknown option $i"
       exit 1
@@ -24,6 +28,7 @@ mkdir -p experiment
 # default config if not specified
 if [ -z "$p" ]; then p=4; fi
 if [ -z "$e" ]; then e=0; fi
+if [ -z "$d" ]; then d=30; fi
 
 USER_DOCKER="$(id -u):$(id -g)"
 
@@ -53,6 +58,7 @@ id = $id
 ip = 'process$id:4444'
 peers = $peers
 experiment_type = $e
+duration = $d
 EOF
 
     cat << EOF >> ./experiment/docker-compose.yml

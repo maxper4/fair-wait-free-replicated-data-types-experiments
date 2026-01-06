@@ -72,7 +72,7 @@ impl OperationParameterWithInitialContext for CommandsParameter {
 
 pub async fn run() {
     let config = Config::get("config.toml");
-    println!("Process {} launched at {} for experiment type {}.", config.id, date(), config.experiment_type);
+    println!("Process {} launched at {} for experiment type {} during {}s.", config.id, date(), config.experiment_type, config.duration);
 
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
     let (to_metrics_chan, mut from_metrics_chan) : (Sender<(Vec<Operation<CommandsParameter>>, u128, u128)>, tokio::sync::mpsc::Receiver<(Vec<Operation<CommandsParameter>>, u128, u128)>) = tokio::sync::mpsc::channel(100);
@@ -190,7 +190,7 @@ pub async fn run() {
         println!("Average computation time per operation for process {}: {} microseconds.", config.id, avg);
     });
 
-    tokio::time::timeout(tokio::time::Duration::from_secs(30), execute_task).await.unwrap_err(); // experiment duration, after here the "talk" task is terminated
+    tokio::time::timeout(tokio::time::Duration::from_secs(config.duration), execute_task).await.unwrap_err(); // experiment duration, after here the "talk" task is terminated
 
     println!("Process {} finished experiment at {}.", config.id, date());
 

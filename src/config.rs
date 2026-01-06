@@ -9,6 +9,7 @@ pub struct Config {
     pub port: String,
     pub peers: Vec<Peer>,
     pub experiment_type: u8,
+    pub duration: u64,
 }
 
 #[derive(Deserialize, Clone)]
