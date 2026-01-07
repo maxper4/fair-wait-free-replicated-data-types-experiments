@@ -37,14 +37,15 @@ fn date() -> String {
 
 pub trait OperationParameterWithInitialContext: OperationParameter {
 
-    fn get_initial_context(&self) -> (u128, u64);
-    fn set_initial_context(&mut self, time: u128, context_hash: u64);
+    fn get_initial_context(&self) -> (u128, u64, u32);
+    fn set_initial_context(&mut self, time: u128, context_hash: u64, process_id: u32);
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
     pub struct CommandsParameter {
         time: u128,
         initial_context_hash: u64,
+        process_id: u32,
     }
 
     impl Default for CommandsParameter {
@@ -52,6 +53,7 @@ pub trait OperationParameterWithInitialContext: OperationParameter {
             CommandsParameter {
                 time: timestamp(),
                 initial_context_hash: 0,
+                process_id: 0,
             }
         }
     }
@@ -60,13 +62,14 @@ impl OperationParameter for CommandsParameter {}
 
 impl OperationParameterWithInitialContext for CommandsParameter {
 
-    fn get_initial_context(&self) -> (u128, u64) {
-        (self.time, self.initial_context_hash)
+    fn get_initial_context(&self) -> (u128, u64, u32) {
+        (self.time, self.initial_context_hash, self.process_id)
     }
 
-    fn set_initial_context(&mut self, time: u128, context: u64) {
+    fn set_initial_context(&mut self, time: u128, context: u64, process_id: u32) {
         self.time = time;
         self.initial_context_hash = context;
+        self.process_id = process_id;
     }
 }
 
@@ -100,10 +103,10 @@ pub async fn run() {
     };
     
     let commands = CRDT::new(vec![], mutate_commands, reconciliation, total);
-    let (mut process, process_executor) = Process::new(config.id, &commands, from_network_chan, &to_metrics_chan);
+    let (mut process, process_executor) = Process::new(config.id, &commands, from_network_chan);
 
     let process_task = tokio::spawn(async move {
-            process.run_with_initial_context(to_network_chan).await;
+            process.run_with_initial_context(to_network_chan, to_metrics_chan).await;
         });
 
     let execute_task = async move {
@@ -169,25 +172,46 @@ pub async fn run() {
             }
         }
 
+        while let Some((state, now, duration)) = from_metrics_chan.recv().await {
+            computation_times.insert(state.len(), duration);
+
+            for i in 0..state.len() {
+                let actual_context = state[0..i].to_vec();
+
+                if metrics.get(&state[i]).is_none() {
+                    metrics.insert(state[i].clone(), (state[i].params.time, 0, actual_context));
+                } 
+                else if metrics.get(&state[i]).unwrap().2 != actual_context {
+                    metrics.entry(state[i].clone()).and_modify(|e| {
+                        e.0 = now;
+                        e.1 += 1;
+                        e.2 = actual_context;
+                    });
+                }
+            }
+        }
+
         let sum : u128 = metrics.iter().map(|(op, (time,_,_))| time - op.params.time).sum();
         let avg = sum as f64 / metrics.len() as f64;
 
-        println!("Average stabilization delay for process {}: {:.3} seconds over {} operations.", config.id, avg / 1000000 as f64, metrics.len());
+        println!("Average stabilization delay: {:.3} seconds over {} operations.", avg / 1000000 as f64, metrics.len());
 
         let total_reorderings : u32 = metrics.iter().map(|(_, (_, count, _))| *count).sum();
         let avg_reorderings = total_reorderings as f64 / metrics.len() as f64;
-        println!("Average reorderings by operation for process {}: {:.3}.", config.id, avg_reorderings);
+        println!("Average reorderings by operation: {:.3}.", avg_reorderings);
 
-        let fairly_stabilized : u32 = metrics.iter().filter(|(op, (_, _, final_context))| { 
+        let fairly_stabilized = metrics.iter().filter(|(op, (_, _, final_context))| { 
             let mut hasher = DefaultHasher::new();
             final_context.hash(&mut hasher);
             let final_hash = hasher.finish();
-            return final_hash == op.params.initial_context_hash } ).count() as u32;
-        println!("Number of fairly stabilized operations for process {}: {} out of {}.", config.id, fairly_stabilized, metrics.len());
+            return final_hash == op.params.initial_context_hash } );
+        println!("Number of fairly stabilized operations: {} out of {}.", fairly_stabilized.clone().count() as u32, metrics.len());
+        let each_fair = (1..(config.peers.len()+1)).map(|p| fairly_stabilized.clone().filter(|(op, _)| op.params.process_id == p as u32).count() as u32);
+        println!("Less fair process had: {}", each_fair.min().unwrap());
 
         let sum : f64 = computation_times.iter().map(|(size, time)| *time as f64 / *size as f64).sum();
         let avg = sum as f64 / computation_times.len() as f64;
-        println!("Average computation time per operation for process {}: {:.3} microseconds.", config.id, avg);
+        println!("Average computation time per operation: {:.3} microseconds.", avg);
     });
 
     tokio::time::timeout(tokio::time::Duration::from_secs(config.duration), execute_task).await.unwrap_err(); // experiment duration, after here the "talk" task is terminated
