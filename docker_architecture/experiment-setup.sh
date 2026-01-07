@@ -11,7 +11,7 @@ for i in "$@"; do
       shift # past argument=value
       ;;
     --partition=*)
-      partition=true
+      partition="${i#*=}"
       shift # past argument=value
       ;;
     -d=*|--duration=*)
@@ -32,18 +32,18 @@ mkdir -p experiment
 # default config if not specified
 if [ -z "$p" ]; then p=4; fi
 if [ -z "$f" ]; then f=1; fi
-if [ -z "$partition" ]; then partition=false; fi
 if [ -z "$d" ]; then d=30; fi
 
 USER_DOCKER="$(id -u):$(id -g)"
 
-if [ "$partition" = true ] ; then # changed experiment type to reconciliation function & simulate partitions when parameter is set
-  partition_start=$(($d / 3))
-  partition_end=$(($d * 2 / 3))
-  partition_duration=$(($partition_end - $partition_start))
-  network_cmd="tc qdisc add dev eth0 root netem delay 100ms 400ms distribution normal && ((sleep $partition_start && tc qdisc change dev eth0 root netem delay ${partition_duration}s) &) && ((sleep $partition_end && tc qdisc change dev eth0 root netem delay 100ms 400ms distribution normal) &) && "
-else
+if [ -z "$partition" ] || [ "$partition" = "0" ] ; then
   network_cmd="tc qdisc add dev eth0 root netem delay 100ms 400ms distribution normal && "
+else
+  partition_duration=$(bc <<< "scale=2; $d*$partition")
+  remaining=$(bc <<< "scale=2; $d-$partition_duration")
+  partition_start=$(bc <<< "scale=2; $remaining/2")
+  partition_end=$(bc <<< "scale=2; $partition_start+$partition_duration")
+  network_cmd="tc qdisc add dev eth0 root netem delay 100ms 400ms distribution normal && ((sleep $partition_start && tc qdisc change dev eth0 root netem delay ${partition_duration}s) &) && ((sleep $partition_end && tc qdisc change dev eth0 root netem delay 100ms 400ms distribution normal) &) && "
 fi
 
 cat << EOF > ./experiment/docker-compose.yml
