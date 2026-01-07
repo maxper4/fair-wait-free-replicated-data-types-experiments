@@ -2,7 +2,7 @@
 
 processesnb=(4 8 12 16)
 experiment_duration=30
-experiment_types=(1 2)
+functions=(1 2)
 
 data_file="stability_vs_processes.dat"
 
@@ -19,16 +19,15 @@ for nb in "${processesnb[@]}"
 do
     echo "Running experiment with $nb processes"
     result="$nb"
-    for e in "${experiment_types[@]}"  # run each reconciliation function
+    for f in "${functions[@]}"
     do 
-        sudo make run p=$nb d=30 e=$e
+        sudo make run p=$nb d=$experiment_duration f=$f
 
         sum_reorgs=0
         for i in $(seq 1 $nb)
         do
-            reorgs_txt=$(grep -E 'Average reorderings by operation for process '$i':' ./experiment/process$i/process$i.log)
+            reorgs_txt=$(grep -E 'Average reorderings by operation:' ./experiment/process$i/process$i.log)
             reorgs=$(echo $reorgs_txt | grep -E -o "[0-9]+.[0-9]{3}")
-            echo "$reorgs"
             sum_reorgs=$(echo "$sum_reorgs + $reorgs" | bc)
         done
         avg_reorgs=$(echo "scale=3; $sum_reorgs / $nb" | bc)
