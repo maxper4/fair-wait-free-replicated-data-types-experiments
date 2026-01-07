@@ -6,8 +6,12 @@ for i in "$@"; do
       p="${i#*=}"
       shift # past argument=value
       ;;
-    -e=*|--experiment=*)
-      e="${i#*=}"
+    -f=*|--function=*)
+      f="${i#*=}"
+      shift # past argument=value
+      ;;
+    --partition=*)
+      partition=true
       shift # past argument=value
       ;;
     -d=*|--duration=*)
@@ -27,10 +31,20 @@ mkdir -p experiment
 
 # default config if not specified
 if [ -z "$p" ]; then p=4; fi
-if [ -z "$e" ]; then e=0; fi
+if [ -z "$f" ]; then f=1; fi
+if [ -z "$partition" ]; then partition=false; fi
 if [ -z "$d" ]; then d=30; fi
 
 USER_DOCKER="$(id -u):$(id -g)"
+
+if [ "$partition" = true ] ; then # changed experiment type to reconciliation function & simulate partitions when parameter is set
+  partition_start=$(($d / 3))
+  partition_end=$(($d * 2 / 3))
+  partition_duration=$(($partition_end - $partition_start))
+  network_cmd="tc qdisc add dev eth0 root netem delay 100ms 400ms distribution normal && ((sleep $partition_start && tc qdisc change dev eth0 root netem delay ${partition_duration}s) &) && ((sleep $partition_end && tc qdisc change dev eth0 root netem delay 100ms 400ms distribution normal) &) && "
+else
+  network_cmd="tc qdisc add dev eth0 root netem delay 100ms 400ms distribution normal && "
+fi
 
 cat << EOF > ./experiment/docker-compose.yml
 version: '3'
@@ -57,11 +71,11 @@ cat << EOF > ./experiment/process$id/config.toml
 id = $id
 ip = 'process$id:4444'
 peers = $peers
-experiment_type = $e
+reconciliation_function  = $f
 duration = $d
 EOF
 
-    cat << EOF >> ./experiment/docker-compose.yml
+cat << EOF >> ./experiment/docker-compose.yml
   process$id:
     container_name: process$id
     cap_add:
@@ -71,7 +85,7 @@ EOF
       - "$port_host:4444"
     volumes:
         - ./process$id:/etc/experiment:rw
-    command: sh -c "tc qdisc add dev eth0 root netem delay 100ms 10000ms distribution normal && /usr/bin/experiment/crdt 2>&1 | tee process$id.log"
+    command: sh -c "$network_cmd(/usr/bin/experiment/crdt 2>&1 | tee process$id.log)"
     user: ${USER_DOCKER}
     working_dir: /etc/experiment
 

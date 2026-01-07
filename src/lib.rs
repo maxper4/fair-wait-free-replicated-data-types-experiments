@@ -72,7 +72,7 @@ impl OperationParameterWithInitialContext for CommandsParameter {
 
 pub async fn run() {
     let config = Config::get("config.toml");
-    println!("Process {} launched at {} for experiment type {} during {}s.", config.id, date(), config.experiment_type, config.duration);
+    println!("Process {} launched at {} with function {} during {}s.", config.id, date(), config.reconciliation_function, config.duration);
 
     let (to_network_chan, from_network_chan, network_task) = network::run(&config).await;
     let (to_metrics_chan, mut from_metrics_chan) : (Sender<(Vec<Operation<CommandsParameter>>, u128, u128)>, tokio::sync::mpsc::Receiver<(Vec<Operation<CommandsParameter>>, u128, u128)>) = tokio::sync::mpsc::channel(100);
@@ -90,7 +90,7 @@ pub async fn run() {
         }
     }
 
-    let reconciliation = match config.experiment_type {
+    let reconciliation = match config.reconciliation_function {
         1 => { 
             stable_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
             stable_commands_reconciliation 

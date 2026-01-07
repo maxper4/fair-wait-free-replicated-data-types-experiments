@@ -7,5 +7,5 @@ peers = [
     { ip = '127.0.0.1', port=4445 },
 ]
 
-experiment_type = 1
+reconciliation_function = 1
 duration = 30

@@ -8,7 +8,7 @@ pub struct Config {
     pub ip: String,
     pub port: String,
     pub peers: Vec<Peer>,
-    pub experiment_type: u8,
+    pub reconciliation_function: u8,
     pub duration: u64,
 }
 
