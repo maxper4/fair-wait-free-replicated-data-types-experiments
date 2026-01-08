@@ -212,6 +212,14 @@ pub async fn run() {
         let sum : f64 = computation_times.iter().map(|(size, time)| *time as f64 / *size as f64).sum();
         let avg = sum as f64 / computation_times.len() as f64;
         println!("Average computation time per operation: {:.3} microseconds.", avg);
+
+        let interests_len = vec![10, 100, 500, 1000];
+        for l in interests_len {
+            let t = computation_times.get(&l);
+            if t.is_some() {
+                println!("Computation time for state of length {}: {} microseconds.", l, t.unwrap());
+            }
+        }
     });
 
     tokio::time::timeout(tokio::time::Duration::from_secs(config.duration), execute_task).await.unwrap_err(); // experiment duration, after here the "talk" task is terminated

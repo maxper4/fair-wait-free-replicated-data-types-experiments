@@ -71,7 +71,7 @@ cat << EOF > ./experiment/process$id/config.toml
 id = $id
 ip = 'process$id:4444'
 peers = $peers
-reconciliation_function  = $f
+reconciliation_function = $f
 duration = $d
 EOF
 
