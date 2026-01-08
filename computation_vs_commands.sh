@@ -2,7 +2,7 @@
 
 processesnb=16
 experiment_duration=60
-functions=(1 2)
+functions=(1 2 3)
 commands=(10 100 500 1000)
 
 data_file="computation_vs_commands.dat"

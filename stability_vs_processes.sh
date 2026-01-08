@@ -2,7 +2,7 @@
 
 processesnb=(4 8 12 16)
 experiment_duration=30
-functions=(1 2)
+functions=(1 2 3)
 
 data_file="stability_vs_processes.dat"
 

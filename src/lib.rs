@@ -99,6 +99,10 @@ pub async fn run() {
             stable_commands_reconciliation 
         },
         2 => fair_reconciliation_no_n,
+        3 => {
+            crdt_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, crdt_commands_reconciliation);
+            crdt_commands_reconciliation
+        },
         _ => fair_reconciliation_no_n,
     };
     
