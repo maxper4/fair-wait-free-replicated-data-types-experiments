@@ -82,7 +82,7 @@ pub async fn run() {
         }
     }
 
-    order_based_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
+    stable_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
     // adding concurrency for debugging
     let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, ()));
     concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 1), VertexLabel::new(0, ())));  // no concurrent, 0 stays

@@ -1,7 +1,7 @@
 pub mod reconciliation_functions;
 pub mod legal_functions;
 
-use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, VertexId}, mutate_if_legal, order_based_reconciliation};
+use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, VertexId}, mutate_if_legal, stable_reconciliation};
 
 pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + 'static {}
 
@@ -106,7 +106,7 @@ mod tests {
             }
         }
 
-        order_based_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
+        stable_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
         // adding concurrency for debugging
         let mut concurrent_set_dag = Dag::new(VertexLabel::<()>::new(0, ()));
         concurrent_set_dag.add_vertex(vec![], Vertex::new(VertexId::new(1, 0), VertexLabel::new(0, ())));  // no concurrent, 0 stays
@@ -139,7 +139,7 @@ mod tests {
             }
         }
 
-        order_based_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
+        stable_reconciliation!(Vec<usize>, (), add_remove_order, add_remove_reconciliation);
         fn leg (state: &Vec<usize>, op: &Operation<()>) -> bool {
             state.len() < 4 // bounded set, no more than 2 elements
         }

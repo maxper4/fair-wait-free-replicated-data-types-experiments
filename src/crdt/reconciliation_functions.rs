@@ -17,8 +17,25 @@ where P: OperationParameter, S: Clone {
 }
 
 #[macro_export]
-macro_rules! order_based_reconciliation {
+macro_rules! crdt_reconciliation {
 ($S:ty,$P:ty,$op_order:ident,$name:ident) => {
+    fn $name(dag: &Dag<VertexLabel<$P>>, initial_state: &$S, mutate: fn(&$S, &Operation<$P>) -> $S) -> $S {
+        let mut state = initial_state.clone();
+        let mut all = dag.get_all_ids().iter().map(|x| dag.get_vertex(x).unwrap()).collect::<Vec<_>>();
+        all.sort_by(|x, y| $op_order(*y,*x)); // sort all vertices by operation order ("op-wins" arbitration)
+        
+        for v in all {
+            state = mutate(&state, &v.label.op);
+        }
+        
+        state
+    }
+};
+}
+
+#[macro_export]
+macro_rules! stable_reconciliation {
+($S:ty,$P:ty,$order_concurrent:ident,$name:ident) => {
     fn $name(dag: &Dag<VertexLabel<$P>>, initial_state: &$S, mutate: fn(&$S, &Operation<$P>) -> $S) -> $S {
         let mut state = initial_state.clone();
         let mut all = dag.get_all_ids().iter().map(|x| dag.get_vertex(x).unwrap()).collect::<Vec<_>>();
@@ -26,7 +43,7 @@ macro_rules! order_based_reconciliation {
 
         for i in 1..(dag.length+1) {
             let mut concurrent = all.iter().filter(|v| v.distance == i).collect::<Vec<_>>();
-            concurrent.sort_by(|x, y| $op_order(*y,*x)); // sort concurrent vertices by operation order
+            concurrent.sort_by(|x, y| $order_concurrent(*y,*x)); // sort concurrent vertices by operation order
             for v in concurrent {
                 state = mutate(&state, &v.label.op);
             }
