@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::{self}};
+use std::{collections::HashMap, fmt::{self}, hash::Hash};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VertexId {
@@ -42,17 +42,25 @@ impl <T>fmt::Display for Vertex<T> where T: Clone {
 
 #[derive(Debug, Clone)]
 pub struct Dag<T> where T: Clone {
-    vertices: Vec<Vertex<T>>,
+    vertices: HashMap<VertexId, Vertex<T>>,
     edges: HashMap<VertexId, Vec<VertexId>>, // from -> to (to is the causal past of from)
-    pub length: u32
+    edges_reverse: HashMap<VertexId, Vec<VertexId>>, // to -> from
+    pub length: u32,
+    pub processes_involved: Vec<u32>,
 }
 
 impl<T> Dag<T> where T: Clone {
     pub fn new(init: T) -> Dag<T> {
         Dag {
-            vertices: vec![Vertex::new(VertexId::new(0, 0), init)],
+            vertices: {
+                let mut map = HashMap::new();
+                map.insert(VertexId::new(0, 0), Vertex::new(VertexId::new(0, 0), init));
+                map
+            },
             edges: HashMap::new(),
-            length: 1
+            edges_reverse: HashMap::new(),
+            length: 1,
+            processes_involved: vec![],
         }
     }
 
@@ -71,10 +79,14 @@ impl<T> Dag<T> where T: Clone {
             self.length = v.distance;
         }
 
-        self.vertices.push(v);
-        let v = &self.vertices[self.vertices.len() - 1];
+        if !self.processes_involved.contains(&v.id.process_id) {
+            self.processes_involved.push(v.id.process_id);
+        }
+
+        let id = v.id;
+        self.vertices.insert(v.id, v);
         let parents_len = parents.len();
-        let current_parents = self.edges.get_mut(&v.id);
+        let current_parents = self.edges.get_mut(&id);
 
         if parents_len == 0 {
             match current_parents {
@@ -84,7 +96,7 @@ impl<T> Dag<T> where T: Clone {
                     }
                 },
                 None => {
-                    self.edges.insert(v.id, vec![VertexId::new(0, 0)]);
+                    self.edges.insert(id, vec![VertexId::new(0, 0)]);
                 }
                 
             }
@@ -97,9 +109,27 @@ impl<T> Dag<T> where T: Clone {
                             p.push(*v2);
                         }
                     }
+
+                    p.sort_by(|x, y| (*x).cmp(y));
                 },
                 None => {
-                    self.edges.insert(v.id, parents.clone());
+                    self.edges.insert(id, parents.clone());
+                }
+            }
+
+            for p in &parents {
+                let children = self.edges_reverse.get_mut(p);
+                match children {
+                    Some(c) => {
+                        if !c.contains(&id) {
+                            c.push(id);
+                        }
+
+                        c.sort_by(|x, y| (*x).cmp(y));
+                    },
+                    None => {
+                        self.edges_reverse.insert(*p, vec![id]);
+                    }
                 }
             }
         }
@@ -108,40 +138,19 @@ impl<T> Dag<T> where T: Clone {
     }
 
     pub fn get_root(&self) -> &Vertex<T> {
-        &self.vertices[0]
+        &self.vertices[&VertexId::new(0, 0)]
     }
 
     pub fn contains_vertex(&self, id: &VertexId) -> bool {
-        for v in &self.vertices {
-            if v.id == *id {
-                return true;
-            }
-        }
-
-        false
+        return self.vertices.contains_key(id);
     }
 
     pub fn get_vertex(&self, id: &VertexId) -> Option<&Vertex<T>> {
-        for v in &self.vertices {
-            if v.id == *id {
-                return Some(v);
-            }
-        }
-
-        None
+        return self.vertices.get(id);
     }
 
-    pub fn get_edges_to_vertex(&self, id: &VertexId) -> Vec<&VertexId> {
-        let mut edges = vec![];
-        for v in &self.vertices {
-            if let Some(parents) = self.edges.get(&(v.id)) {
-                if parents.contains(&id) {
-                    edges.push(&v.id);
-                }
-            }
-        }
-
-        edges
+    pub fn get_edges_to_vertex(&self, id: &VertexId) -> Vec<VertexId> {
+        self.edges_reverse.get(id).unwrap_or(&Vec::<VertexId>::new()).clone()
     }
 
     pub fn get_edges_from_vertex(&self, id: &VertexId) -> Vec<VertexId> {
@@ -151,17 +160,18 @@ impl<T> Dag<T> where T: Clone {
     pub fn get_heads(&self) -> Vec<VertexId> {
         let mut heads = vec![];
         for v in &self.vertices {
-             if self.get_edges_to_vertex(&v.id).len() == 0 {
-                heads.push(v.id);
+             if self.get_edges_to_vertex(&v.0).len() == 0 {
+                heads.push(*v.0);
              }
         }
         let root = self.get_root().id;
         heads.retain(|x| *x != root); // remove root from heads
+        heads.sort_by(|x, y| (*x).cmp(y));
         heads
     }
 
     pub fn get_all_ids(&self) -> Vec<&VertexId> {
-        self.vertices.iter().map(|v| &v.id).collect()
+        self.vertices.keys().collect()
     }
 
     pub fn sorted_past(&self, start: Vec<&VertexId>, explored: &HashMap<VertexId, bool>) -> Vec<VertexId> {
@@ -179,7 +189,7 @@ impl<T> Dag<T> where T: Clone {
                 past.push(head.clone());
 
                 let mut parents = self.get_edges_from_vertex(&head);
-                parents.sort_by(|x, y| (*x).cmp(y));
+                //parents.sort_by(|x, y| (*x).cmp(y));
 
                 for parent in parents {
                     if !seen.get(&parent).unwrap_or(&false) {
@@ -193,50 +203,61 @@ impl<T> Dag<T> where T: Clone {
         past
     }
 
-    pub fn future(&self, v: &VertexId) -> Vec<&VertexId> {
-        let mut future = vec![];
+    pub fn processes_in_future_no_n(&self, v: &VertexId) -> Vec<u32> {
+        let mut processes = vec![];
         let mut toexplore = self.get_edges_to_vertex(v);
-        toexplore.sort_by(|x, y| (**x).cmp(*y));
-        let mut seen = vec![v];
+        //toexplore.sort_by(|x, y| (*x).cmp(y));
+        let mut seen = HashMap::new();
+        seen.insert(*v, true);
+
+        let n = self.processes_involved.len();
 
         while toexplore.len() > 0 {
             let head = toexplore.remove(0);
-            if !seen.contains(&&head) {
-                seen.push(&head);
-                future.push(head);
+            if !seen.get(&head).unwrap_or(&false) {
+                seen.insert(head, true);
 
+                if !processes.contains(&head.process_id) {
+                    processes.push(head.process_id);
+
+                    if processes.len() >= n {
+                        break;
+                    }
+                }
                 let mut parents = self.get_edges_to_vertex(&head);
-                parents.sort_by(|x, y| (**x).cmp(*y));
+                //parents.sort_by(|x, y| (*x).cmp(y));
 
                 for parent in parents {
-                    if !seen.contains(&parent) {
+                    if !seen.get(&parent).unwrap_or(&false) {
                         toexplore.push(parent);
                     }
                 }
             }
         }
-        future
+
+        processes
     }
 
     pub fn processes_in_future(&self, v: &VertexId, n: u32) -> Vec<u32>{
         let mut processes = vec![];
         let mut toexplore = self.get_edges_to_vertex(v);
-        toexplore.sort_by(|x, y| (**x).cmp(*y));
-        let mut seen = vec![v];
+        //toexplore.sort_by(|x, y| (*x).cmp(y));
+        let mut seen = HashMap::new();
+        seen.insert(*v, true);
 
         while toexplore.len() > 0 && processes.len() < n as usize {
             let head = toexplore.remove(0);
-            if !seen.contains(&&head) {
-                seen.push(&head);
+            if !seen.get(&head).unwrap_or(&false) {
+                seen.insert(head, true);
                 if !processes.contains(&head.process_id) {
                     processes.push(head.process_id);
                 }
 
                 let mut parents = self.get_edges_to_vertex(&head);
-                parents.sort_by(|x, y| (**x).cmp(*y));
+                //parents.sort_by(|x, y| (*x).cmp(y));
 
                 for parent in parents {
-                    if !seen.contains(&parent) {
+                    if !seen.get(&parent).unwrap_or(&false) {
                         toexplore.push(parent);
                     }
                 }
@@ -245,30 +266,31 @@ impl<T> Dag<T> where T: Clone {
         processes
     }
 
-    pub fn first_from_processes (&self, start: &VertexId, processes: &Vec<&u32>) -> &VertexId {
+    pub fn first_from_processes (&self, start: &VertexId, processes: &Vec<&u32>) -> VertexId {
         let mut toexplore = self.get_edges_to_vertex(&start);
-        toexplore.sort_by(|x, y| (**x).cmp(*y));
+        //toexplore.sort_by(|x, y| (*x).cmp(y));
 
-        let mut seen = vec![start];
+        let mut seen = HashMap::new();
+        seen.insert(*start, true);
 
         while toexplore.len() > 0 {
             let head = toexplore.remove(0);
-            seen.push(&head);
+            seen.insert(head, true);
 
             if processes.contains(&&head.process_id) {  // BFS until we find a vertex from one of the processes
                 return head;
             }
 
-            let mut children = self.get_edges_to_vertex(head);
-            children.sort_by(|x, y| (**x).cmp(*y));
+            let mut children = self.get_edges_to_vertex(&head);
+            //children.sort_by(|x, y| (*x).cmp(y));
 
             for child in children {
-                if !seen.contains(&child) {
+                if !seen.get(&child).unwrap_or(&false) {
                     toexplore.push(child);
                 }
             }
         }
-        &self.get_root().id // return root if no vertex found
+        self.get_root().id // return root if no vertex found
     }
 }
 

@@ -12,7 +12,7 @@ use crate::dag::Dag;
 
 fn to_graph_viz<T>(d: &Dag<T>) -> graphviz_rust::dot_structures::Graph where T:Clone {
     let mut g = graph!(di id!("id"));
-    let mut toexplore = vec![&d.get_root().id];
+    let mut toexplore = vec![d.get_root().id];
     let mut explored = vec![];
     while toexplore.len() > 0 {
         let head = toexplore.pop().unwrap();

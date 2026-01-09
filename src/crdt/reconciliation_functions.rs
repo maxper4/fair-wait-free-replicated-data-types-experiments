@@ -59,23 +59,23 @@ pub fn fair_reconciliation_no_n<P, S>(dag: &Dag<VertexLabel<P>>, initial_state: 
 where P: OperationParameter, S: Clone+Debug+Hash {
     let mut state = initial_state.clone();
     let mut counter: HashMap<u32, u32> = HashMap::new();
-    let mut candidates: Vec<&VertexId> = dag.get_edges_to_vertex(&dag.get_root().id); // start with the root vertex
-    let all = dag.get_all_ids();
+    let mut candidates: Vec<VertexId> = dag.get_edges_to_vertex(&dag.get_root().id); // start with the root vertex
+    // let all = dag.get_all_ids();
     let mut explored: HashMap<VertexId, bool> = HashMap::new();
-    for v in all.clone() {
-        explored.insert(*v, false);
-    }
+    // for v in all.clone() {
+    //     explored.insert(*v, false);
+    // }
     explored.insert(dag.get_root().id, true);
     let mut z = 0;
 
     while candidates.len() > 0 {
         z += 1;
-        candidates.sort_by(|x, y| (**x).cmp(*y)); // sort candidates by id (for instance, to have a deterministic order)
+        //candidates.sort_by(|x, y| (*x).cmp(y)); // sort candidates by id (for instance, to have a deterministic order)
         let current = candidates.remove(0);
 
         let mut heads = dag.get_edges_from_vertex(&current);     // reconstitute current's initial context
         heads.retain(|x| !explored.get(x).unwrap_or(&false));
-        heads.sort_by(|x, y| (*x).cmp(y)); 
+        //heads.sort_by(|x, y| (*x).cmp(y)); 
         let past = dag.sorted_past(heads.iter().map(|x| x).collect(), &explored);
 
         for p in past {
@@ -85,13 +85,11 @@ where P: OperationParameter, S: Clone+Debug+Hash {
 
         println!("Z: {}, Leader: {:?}, with {}, before: {:?}", z, current.process_id, current, state);
 
-        explored.insert(*current, true);
+        explored.insert(current, true);
         state = mutate(&state, &dag.get_vertex(&current).unwrap().label.op);
         counter.insert(dag.get_vertex(&current).unwrap().id.process_id, counter.get(&dag.get_vertex(&current).unwrap().id.process_id).unwrap_or(&0) + 1);
 
-        let mut alive = dag.future(&current).iter().map(|v| v.process_id).collect::<Vec<_>>();
-        alive.sort();
-        alive.dedup();
+        let alive = dag.processes_in_future_no_n(&current);
         if alive.len() == 0 {
             break; // no more future vertices
         }
@@ -100,13 +98,13 @@ where P: OperationParameter, S: Clone+Debug+Hash {
         candidates = vec![dag.first_from_processes(&current, &starving)];
     }
 
-    let remaining = all.iter().filter(|x| !explored[*x]).collect::<Vec<_>>();
-    println!("Remaining length: {}/{}/{}", remaining.len(), all.len(), z);
+    // let remaining = all.iter().filter(|x| !explored[*x]).collect::<Vec<_>>();
+    // println!("Remaining length: {}/{}/{}", remaining.len(), all.len(), z);
 
     let binding = dag.get_heads();
     let mut heads = binding.iter().map(|x| x).collect::<Vec<_>>();
     heads.retain(|x| !explored.get(x).unwrap_or(&false));
-    heads.sort_by(|x, y| (**x).cmp(*y));  
+    //heads.sort_by(|x, y| (**x).cmp(*y));  
     
     let remaining = dag.sorted_past(heads, &explored);
     for v in remaining {
