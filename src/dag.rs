@@ -98,7 +98,20 @@ impl<T> Dag<T> where T: Clone {
                 None => {
                     self.edges.insert(id, vec![VertexId::new(0, 0)]);
                 }
-                
+            }
+
+            let children = self.edges_reverse.get_mut(&VertexId::new(0, 0));
+            match children {
+                Some(c) => {
+                    if !c.contains(&id) {
+                        c.push(id);
+                    }
+
+                    c.sort_by(|x, y| (*x).cmp(y));
+                },
+                None => {
+                    self.edges_reverse.insert(VertexId::new(0, 0), vec![id]);
+                }
             }
         }
         else {
