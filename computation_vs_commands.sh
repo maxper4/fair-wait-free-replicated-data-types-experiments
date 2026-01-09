@@ -1,7 +1,7 @@
 #!/bin/bash
 
 processesnb=16
-experiment_duration=60
+experiment_duration=120
 functions=(1 2 3)
 commands=(10 100 500 1000)
 
