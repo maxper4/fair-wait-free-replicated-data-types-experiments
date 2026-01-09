@@ -3,7 +3,7 @@ set key left
 set output 'computation_vs_commands.png'
 set auto x
 set auto y
-set logscale y 2
+#set logscale y 2
 set xlabel 'State size (number of commands)'
 set ylabel 'Average read duration (ms)'
 #unset key
