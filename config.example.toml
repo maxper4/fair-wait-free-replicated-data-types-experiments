@@ -8,4 +8,5 @@ peers = [
 ]
 
 reconciliation_function = 1
+data_type = 1
 duration = 30

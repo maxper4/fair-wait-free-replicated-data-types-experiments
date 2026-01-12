@@ -6,6 +6,10 @@ for i in "$@"; do
       p="${i#*=}"
       shift # past argument=value
       ;;
+    -t=*|--data_type=*)
+      t="${i#*=}"
+      shift # past argument=value
+      ;;
     -f=*|--function=*)
       f="${i#*=}"
       shift # past argument=value
@@ -33,6 +37,7 @@ mkdir -p experiment
 if [ -z "$p" ]; then p=4; fi
 if [ -z "$f" ]; then f=1; fi
 if [ -z "$d" ]; then d=30; fi
+if [ -z "$t" ]; then t=1; fi
 
 USER_DOCKER="$(id -u):$(id -g)"
 
@@ -72,6 +77,7 @@ id = $id
 ip = 'process$id:4444'
 peers = $peers
 reconciliation_function = $f
+data_type = $t
 duration = $d
 EOF
 
