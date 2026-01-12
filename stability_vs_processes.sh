@@ -1,8 +1,9 @@
 #!/bin/bash
 
 processesnb=(4 8 12 16)
-experiment_duration=30
+experiment_duration=300
 functions=(1 2 3)
+data_type=1
 
 data_file="stability_vs_processes.dat"
 
@@ -21,7 +22,7 @@ do
     result="$nb"
     for f in "${functions[@]}"
     do 
-        sudo make run p=$nb d=$experiment_duration f=$f
+        sudo make run p=$nb d=$experiment_duration f=$f t=$data_type
 
         sum_reorgs=0
         for i in $(seq 1 $nb)

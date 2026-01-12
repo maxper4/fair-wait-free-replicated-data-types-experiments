@@ -4,6 +4,7 @@ processesnb=10
 experiment_duration=360
 functions=(1 2 3)
 commands=(10 100 500 1000)
+data_type=1
 
 data_file="computation_vs_commands.dat"
 
@@ -24,7 +25,7 @@ done
 
 for f in "${functions[@]}"
 do 
-    sudo make run p=$processesnb d=$experiment_duration f=$f
+    sudo make run p=$processesnb d=$experiment_duration f=$f t=$data_type
 
     sums=()
     for c in "${commands[@]}"

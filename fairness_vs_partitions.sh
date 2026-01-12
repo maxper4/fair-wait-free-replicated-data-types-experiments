@@ -1,9 +1,10 @@
 #!/bin/bash
 
 processesnb=16
-experiment_duration=60
+experiment_duration=300
 partitions_ratios=(0 0.1 0.25 0.5)
 functions=(1 2 3)
+data_type=1
 
 data_file="fairness_vs_partitions.dat"
 
@@ -22,7 +23,7 @@ do
     result="$r"
     for f in "${functions[@]}"  # run each reconciliation function
     do 
-        sudo make run p=$processesnb d=$experiment_duration f=$f partition=$r
+        sudo make run p=$processesnb d=$experiment_duration f=$f partition=$r t=$data_type
 
         fairlystabilized_txt=$(grep -E 'Number of fairly stabilized operations:' ./experiment/process1/process1.log)  # enough to check process 1 since all end in the same state
         fairlystabilized=($(echo $fairlystabilized_txt | grep -E -o "[0-9]+")) # 0 is the nb of fairly stabilized operations, 1 is the total nb of operations
