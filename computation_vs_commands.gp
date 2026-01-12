@@ -5,7 +5,7 @@ set auto x
 set auto y
 #set logscale y 2
 set xlabel 'State size (number of commands)'
-set ylabel 'Average read duration (ms)'
+set ylabel 'Average read duration (μs)'
 #unset key
 #set key title ''
 set style line 1 lt 1 lw 1.5 pt 3 linecolor rgb '#2b63ff'

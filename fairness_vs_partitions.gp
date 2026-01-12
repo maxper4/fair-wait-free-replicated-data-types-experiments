@@ -2,7 +2,7 @@ set terminal png size 2000,800 font ',15'
 set key right
 set output 'fairness_vs_partitions.png'
 set yrange [0:0<*]
-set xlabel 'Partition duration (%)'
+set xlabel 'Partition duration (ratio)'
 set ylabel 'Fairly stabilized commands (%)'
 set style data histograms
 set style histogram clustered

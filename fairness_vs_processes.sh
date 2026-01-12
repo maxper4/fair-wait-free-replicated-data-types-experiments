@@ -29,7 +29,7 @@ do
         minimumfair=$(echo $minimumfair_txt | grep -E -o "[0-9]+") # nb of operations of the less fair process
         maximumfair_txt=$(grep -E 'Most fair process had:' ./experiment/process1/process1.log)
         maximumfair=$(echo $maximumfair_txt | grep -E -o "[0-9]+") # nb of operations of the more fair process
-        ratio=$(echo "scale=3; 100 * $minimumfair / $maximumfair" | bc) # should be 1 if uniformly fair
+        ratio=$(echo "scale=3; $minimumfair / $maximumfair" | bc) # should be 1 if uniformly fair
 
         result="$result $ratio"
         sudo make stop
