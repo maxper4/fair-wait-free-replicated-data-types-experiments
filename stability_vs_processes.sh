@@ -1,9 +1,9 @@
 #!/bin/bash
 
-processesnb=(4 8 12 16)
+processesnb=(12 16)
 experiment_duration=300
-functions=(1 2 3)
-data_type=1
+functions=(1 2)
+data_type=2
 
 data_file="stability_vs_processes.dat"
 

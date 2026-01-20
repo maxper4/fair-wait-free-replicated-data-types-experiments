@@ -2,7 +2,7 @@
 
 processesnb=10
 experiment_duration=360
-functions=(1 2 3)
+functions=(1 2)
 commands=(10 100 500 1000)
 data_type=1
 
