@@ -1,9 +1,10 @@
 set terminal pict2e size 3.6in,1.4in font ",8"
 set key inside top center columns 2 width 7
-set output 'fairness_vs_processes_removewins.tex'
+set output 'fairness_vs_processes.tex'
 set yrange [0:1]
 set xlabel 'Number of processes'
-set ylabel "Ratio minimum/maximum\nof sucessful commands\nby process, after partition" offset -2,0
+#set ylabel "Fairness ratio of\nsuccessful commands" offset -1,0
+set ylabel "Fairness ratio of fairly\nstabilized commands" offset -1,0
 set style data histograms
 set style histogram clustered
 set style fill solid 1.0 border lt -1
@@ -16,5 +17,5 @@ set border back ls 11
 set style line 12 lc rgb '#808080' lt 0 lw 1
 set grid back ls 12
 
-plot 'fairness_vs_processes_removewins.dat' using 2:xtic(1) title '\fbfs' linecolor rgb "#377EB8", \
+plot 'fairness_vs_processes.dat' using 2:xtic(1) title '\fbfs' linecolor rgb "#377EB8", \
     '' using 3:xtic(1) title '\ffair' linecolor rgb "#4DAF4A",\

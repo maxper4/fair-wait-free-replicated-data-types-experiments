@@ -33,6 +33,7 @@ macro_rules! crdt_reconciliation {
 };
 }
 
+// reconciliation based on the distance from the root and operation order $order_concurrent among concurrent operations)
 #[macro_export]
 macro_rules! stable_reconciliation {
 ($S:ty,$P:ty,$order_concurrent:ident,$name:ident) => {
@@ -54,7 +55,7 @@ macro_rules! stable_reconciliation {
 };
 }
 
-// reconciliation based on process fairness rather than semantically
+// reconciliation based on process fairness (ffair)
 pub fn fair_reconciliation_no_n<P, S>(dag: &Dag<VertexLabel<P>>, initial_state: &S, mutate: fn(&S, &Operation<P>) -> S) -> S 
 where P: OperationParameter, S: Clone+Debug+Hash {
     let mut state = initial_state.clone();
@@ -114,6 +115,7 @@ where P: OperationParameter, S: Clone+Debug+Hash {
     state
 }
 
+// fair reconciliation when the number of processes is known, not used
 #[macro_export]
 macro_rules! fair_reconciliation_n {
 ($n:expr) => {

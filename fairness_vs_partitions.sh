@@ -2,9 +2,9 @@
 
 processesnb=16
 experiment_duration=300
-partitions_ratios=(0.5)
+partitions_ratios=(0 0.1 0.25 0.5)
 functions=(1 2)
-data_type=2
+data_type=1
 
 data_file="fairness_vs_partitions.dat"
 

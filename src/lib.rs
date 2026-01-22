@@ -130,6 +130,10 @@ async fn run_experiment_commands(config: Config) {
         state
     }
 
+    fn process_order(v1: &Vertex<VertexLabel<CommandsParameter>>, v2: &Vertex<VertexLabel<CommandsParameter>>) -> Ordering {
+        v1.id.process_id.cmp(&v2.id.process_id)
+    }
+
     fn commands_order(v1: &Vertex<VertexLabel<CommandsParameter>>, v2: &Vertex<VertexLabel<CommandsParameter>>) -> Ordering {
         match v1.label.op.id.cmp(&v2.label.op.id) {
             Ordering::Equal => v1.id.process_id.cmp(&v2.id.process_id),
@@ -139,7 +143,7 @@ async fn run_experiment_commands(config: Config) {
 
     let reconciliation = match config.reconciliation_function {
         1 => { 
-            stable_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, commands_order, stable_commands_reconciliation);
+            stable_reconciliation!(Vec<Operation<CommandsParameter>>, CommandsParameter, process_order, stable_commands_reconciliation);
             stable_commands_reconciliation 
         },
         2 => fair_reconciliation_no_n,
@@ -305,6 +309,10 @@ async fn run_experiment_removewins(config: Config) {
         state
     }
 
+    fn process_order(v1: &Vertex<VertexLabel<RemoveWinsParameter>>, v2: &Vertex<VertexLabel<RemoveWinsParameter>>) -> Ordering {
+        v1.id.process_id.cmp(&v2.id.process_id)
+    }
+
     fn remove_wins(v1: &Vertex<VertexLabel<RemoveWinsParameter>>, v2: &Vertex<VertexLabel<RemoveWinsParameter>>) -> Ordering {
         match v1.label.op.id.cmp(&v2.label.op.id) {     // 1 = add, 2 = remove
             Ordering::Equal => v1.id.process_id.cmp(&v2.id.process_id),
@@ -314,7 +322,7 @@ async fn run_experiment_removewins(config: Config) {
 
     let reconciliation = match config.reconciliation_function {
         1 => {
-            stable_reconciliation!(Vec<(Operation<RemoveWinsParameter>, bool)>, RemoveWinsParameter, remove_wins, stable_commands_reconciliation);
+            stable_reconciliation!(Vec<(Operation<RemoveWinsParameter>, bool)>, RemoveWinsParameter, process_order, stable_commands_reconciliation);
             stable_commands_reconciliation 
         },
         2 => fair_reconciliation_no_n,

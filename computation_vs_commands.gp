@@ -1,6 +1,6 @@
-set terminal pict2e size 3.6in,2.0in font ",8"
+set terminal pict2e size 3.6in,1.8in font ",8"
 set key left width 7
-set output 'computation_vs_commands_nosem.tex'
+set output 'computation_vs_commands.tex'
 set auto x
 set auto y
 #set logscale y 2
@@ -18,6 +18,6 @@ set border back ls 11
 set style line 12 lc rgb '#808080' lt 0 lw 1
 set grid back ls 12
 
-plot 'computation_vs_commands_nosem.dat' using 2:xtic(1) title '\fbfs' with linespoints ls 1 linecolor rgb "#377EB8",\
+plot 'computation_vs_commands.dat' using 2:xtic(1) title '\fbfs' with linespoints ls 1 linecolor rgb "#377EB8",\
     '' using 3:xtic(1) title '\ffair' with linespoints ls 1 linecolor rgb "#4DAF4A",
     #'' using 4:xtic(1) title '\fcrdt' with linespoints ls 1 linecolor rgb "#E41A1C"

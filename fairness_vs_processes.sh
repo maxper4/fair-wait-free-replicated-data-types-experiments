@@ -4,7 +4,7 @@ processesnb=(4 8 12 16)
 experiment_duration=300
 partitions_ratio=0.33
 functions=(1 2)
-data_type=2
+data_type=1
 
 data_file="fairness_vs_processes.dat"
 
