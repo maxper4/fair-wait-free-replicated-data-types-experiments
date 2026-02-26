@@ -5,10 +5,10 @@ build:
 run:
 	mkdir -p experiment
 	bash docker_architecture/experiment-setup.sh
-	docker-compose -f experiment/docker-compose.yml up --build
+	docker compose -f experiment/docker-compose.yml up --build
 
 stop:
-	docker-compose -f experiment/docker-compose.yml down
+	docker compose -f experiment/docker-compose.yml down
 	rm -rf experiment
 
 docker-rm:

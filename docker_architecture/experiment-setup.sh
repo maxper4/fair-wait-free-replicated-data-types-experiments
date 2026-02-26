@@ -52,8 +52,6 @@ else
 fi
 
 cat << EOF > ./experiment/docker-compose.yml
-version: '3'
-
 services:
 EOF
 
