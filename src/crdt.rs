@@ -4,6 +4,7 @@ pub mod legal_functions;
 use crate::{crdt::legal_functions::IllegalOperationError, dag::{Dag, Vertex, VertexId}, mutate_if_legal, stable_reconciliation};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::fmt::Debug;
 
 pub trait OperationParameter: Clone + Send + PartialEq + Eq + Default + Serialize + 'static {}
 

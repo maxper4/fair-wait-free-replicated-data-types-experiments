@@ -6,12 +6,14 @@ use serde::{Deserialize};
 pub struct Config {
     pub id: u32,
     pub ip: String,
+    pub port: String,
     pub peers: Vec<Peer>,
 }
 
 #[derive(Deserialize, Clone)]
 pub struct Peer {
     pub ip: String,
+    pub port: String,
 }
 
 impl Config {
