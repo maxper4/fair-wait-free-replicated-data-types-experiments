@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 graphviz-rust = "0.9.3"
 tokio = { version = "1.50", features = ["full"] }
-libp2p = { version = "0.56", features = ["tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic"] }
+libp2p = { version = "0.56", features = ["tokio", "gossipsub", "noise", "macros", "tcp", "yamux", "quic"] }
 toml = "0.8.20"
 serde = { version = "1.0", features = ["derive"] }
 bincode = { version = "2.0.1", features = ["serde"] }
