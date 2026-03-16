@@ -62,7 +62,7 @@ do
     for peer_id in $(seq 1 $p)
     do
         if [ $peer_id -ne $id ]; then
-            peers+="{ip = 'process$peer_id:4444'},"
+            peers+="{ip = '192.167.0.$((peer_id+1))', port='4444'},"
         fi
     done
     peers+="]"
@@ -72,7 +72,8 @@ do
     mkdir -p ./experiment/process$id
 cat << EOF > ./experiment/process$id/config.toml
 id = $id
-ip = 'process$id:4444'
+ip = 'process$id'
+port = '4444'
 peers = $peers
 reconciliation_function = $f
 data_type = $t
